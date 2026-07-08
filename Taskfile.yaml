@@ -53,7 +53,7 @@ tasks:
         cmd: |
           echo "Running golangci-lint in {{.ITEM}}"
           cd {{.ITEM}}
-          {{.GOLANGCI_LINT_BIN}} run --config {{.ROOT_DIR}}/.golangci.yml {{.FIX_FLAG}}
+          {{.GOLANGCI_LINT_BIN}} run --config {{.ROOT_DIR}}/.golangci.yaml {{.FIX_FLAG}}
 
   lint:
     desc: Run all linters

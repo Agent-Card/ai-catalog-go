@@ -42,5 +42,5 @@ jobs:
         with:
           files: coverage.out
           flags: unit
-          codecov_yml_path: codecov.yml
+          codecov_yml_path: codecov.yaml
           use_oidc: true

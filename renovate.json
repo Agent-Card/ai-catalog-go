@@ -14,7 +14,7 @@
     {
       "customType": "regex",
       "fileMatch": [
-        "^Taskfile\\.yml$"
+        "^Taskfile\\.yaml$"
       ],
       "matchStrings": [
         "# renovate: datasource=(?<datasource>[a-z-]+) depName=(?<depName>[^\\s]+)\\s+[A-Z_]+_VERSION: \"(?<currentValue>[^\"]+)\""
