@@ -5,4 +5,4 @@ module-sets:
   ai-catalog-go-sdk:
     version: v0.1.0
     modules:
-      - github.com/agntcy/ai-catalog-go-sdk
+      - github.com/agntcy/ai-catalog-go-sdk/catalog

@@ -31,7 +31,8 @@ tasks:
   test:unit:
     desc: Run Go unit tests with coverage
     cmds:
-      - go test -race -coverprofile=coverage.out ./...
+      - for: { var: GO_MOD_DIR }
+        cmd: go -C {{.ITEM}} test -race -coverprofile=coverage.out ./...
 
   test:
     desc: Run all tests
