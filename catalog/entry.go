@@ -5,46 +5,77 @@ package catalog
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
-	"time"
 )
 
-// Entry represents a single catalog entry.
-type Entry struct {
-	Identifier  string     `json:"identifier"`
-	DisplayName string     `json:"displayName,omitempty"`
-	MediaType   string     `json:"mediaType"`
-	Description string     `json:"description,omitempty"`
-	Tags        []string   `json:"tags,omitempty"`
-	URL         string     `json:"url"`
-	UpdatedAt   *time.Time `json:"updatedAt,omitempty"`
+// CatalogEntry describes a single AI artifact: it identifies the artifact,
+// declares its kind via Type, and either references it (URL) or embeds it
+// inline (Data). When Version is set, (Identifier, Version) must be unique
+// within a catalog; otherwise Identifier alone must be unique.
+//
+//nolint:revive // "catalog.CatalogEntry" matches the spec and the Rust SDK type name.
+type CatalogEntry struct {
+	// Identifier is a stable, globally unique identifier, ideally a URN
+	// (RFC 8141) or URI.
+	Identifier string `json:"identifier"`
+
+	// DisplayName is a human-readable name for the artifact.
+	DisplayName string `json:"displayName,omitempty"`
+
+	// Type is the media type of the artifact, e.g.
+	// "application/a2a-agent-card+json", "application/mcp-server-card+json",
+	// or "application/ai-catalog+json" for a nested catalog.
+	Type string `json:"type"`
+
+	// URL is where the artifact document can be retrieved. Exactly one of URL
+	// or Data must be set.
+	URL string `json:"url,omitempty"`
+
+	// Data is the artifact document embedded inline; its structure follows
+	// Type. Exactly one of URL or Data must be set.
+	Data json.RawMessage `json:"data,omitempty"`
+
+	// Version is the artifact version. Semantic Versioning is recommended.
+	Version string `json:"version,omitempty"`
+
+	// Description of the artifact.
+	Description string `json:"description,omitempty"`
+
+	// Tags are free-form keywords for filtering and discovery.
+	Tags []string `json:"tags,omitempty"`
+
+	// Publisher is the publishing entity. Canonical location for publisher
+	// info, not duplicated in TrustManifest.
+	Publisher *Publisher `json:"publisher,omitempty"`
+
+	// TrustManifest holds trust metadata. When present, TrustManifest.Identity
+	// must match Identifier.
+	TrustManifest *TrustManifest `json:"trustManifest,omitempty"`
+
+	// UpdatedAt is an RFC 3339 timestamp of the last modification to this entry.
+	UpdatedAt string `json:"updatedAt,omitempty"`
+
+	// Metadata holds custom or vendor-specific metadata.
+	Metadata map[string]json.RawMessage `json:"metadata,omitempty"`
 }
 
-// GetIdentifier returns the entry identifier.
-func (e *Entry) GetIdentifier() string { return e.Identifier }
-
-// GetDisplayName returns the entry display name.
-func (e *Entry) GetDisplayName() string { return e.DisplayName }
-
-// GetMediaType returns the entry media type.
-func (e *Entry) GetMediaType() string { return e.MediaType }
-
-// GetDescription returns the entry description.
-func (e *Entry) GetDescription() string { return e.Description }
-
-// GetTags returns the entry tags.
-func (e *Entry) GetTags() []string { return e.Tags }
-
-// GetURL returns the entry URL.
-func (e *Entry) GetURL() string { return e.URL }
-
-// GetUpdatedAt returns the entry update timestamp.
-func (e *Entry) GetUpdatedAt() *time.Time { return e.UpdatedAt }
+// IsNestedCatalog reports whether the entry references or embeds another AI
+// Catalog (i.e. its Type is "application/ai-catalog+json").
+func (e *CatalogEntry) IsNestedCatalog() bool {
+	return e.Type == MediaTypeCatalog
+}
 
 // Pull fetches the artifact at the entry's URL and returns its raw bytes.
-func (e *Entry) Pull(ctx context.Context) ([]byte, error) {
+// It returns an error if the entry has no URL (e.g. it embeds inline Data).
+func (e *CatalogEntry) Pull(ctx context.Context) ([]byte, error) {
+	if e.URL == "" {
+		return nil, errors.New("entry has no url to pull from")
+	}
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, e.URL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)

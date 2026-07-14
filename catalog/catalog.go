@@ -1,12 +1,14 @@
 // Copyright AGNTCY Contributors (https://github.com/agntcy)
 // SPDX-License-Identifier: Apache-2.0
 
+// Package catalog provides types and helpers for the AI Catalog specification
+// (https://agent-card.github.io/ai-catalog/): parsing, serializing, searching,
+// and navigating AI Catalog documents.
 package catalog
 
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -15,37 +17,34 @@ import (
 	"strings"
 )
 
+// MediaTypeCatalog is the media type identifying a (possibly nested) AI Catalog
+// document. An entry whose Type equals this value embeds or references another
+// AI Catalog.
+const MediaTypeCatalog = "application/ai-catalog+json"
+
+// AICatalog is the top-level container for discovering heterogeneous AI
+// artifacts (MCP servers, A2A agents, skills, nested catalogs, etc.).
+// It is serialized as media type "application/ai-catalog+json".
 type AICatalog struct {
-	SpecVersion string  `json:"specVersion"`
-	Host        Host    `json:"host"`
-	Entries     []Entry `json:"entries"`
+	// SpecVersion is the AI Catalog spec version this document conforms to,
+	// as "Major.Minor".
+	SpecVersion string `json:"specVersion"`
+
+	// Host is the operator of this catalog. Required at the
+	// Discoverable/Trusted conformance levels.
+	Host *HostInfo `json:"host,omitempty"`
+
+	// Entries are the catalog entries. May be empty.
+	Entries []CatalogEntry `json:"entries"`
+
+	// Metadata holds custom or vendor-specific metadata.
+	Metadata map[string]json.RawMessage `json:"metadata,omitempty"`
 }
 
-type Host struct {
-	DisplayName      string `json:"displayName,omitempty"`
-	Identifier       string `json:"identifier"`
-	DocumentationURL string `json:"documentationURL,omitempty"`
-}
-
-// Search returns all entries whose searchable fields match the query.
-// The query is first compiled as a regular expression; if it is not a valid
-// regex, a case-insensitive substring match is used instead.
-func (c *AICatalog) Search(query string) []Entry {
-	re, useRegex := tryCompileRegex(query)
-
-	var results []Entry
-
-	for _, entry := range c.Entries {
-		if matchesEntry(entry, query, re, useRegex) {
-			results = append(results, entry)
-		}
-	}
-
-	return results
-}
-
-// GetById returns the entry with the given identifier, or (nil, false) if not found.
-func (c *AICatalog) GetById(id string) (*Entry, bool) {
+// GetByID returns a pointer to the first entry whose Identifier exactly matches
+// id, and reports whether such an entry was found. The pointer references the
+// entry inside the catalog's Entries slice.
+func (c *AICatalog) GetByID(id string) (*CatalogEntry, bool) {
 	for i := range c.Entries {
 		if c.Entries[i].Identifier == id {
 			return &c.Entries[i], true
@@ -55,35 +54,47 @@ func (c *AICatalog) GetById(id string) (*Entry, bool) {
 	return nil, false
 }
 
-// Validate checks the catalog against the AI Catalog specification rules.
-func (c *AICatalog) Validate() error {
-	if c.SpecVersion == "" {
-		return errors.New("specVersion must not be empty")
-	}
+// Search returns all entries where query appears (case-insensitively) in the
+// Identifier, DisplayName, Description, or any Tags value.
+func (c *AICatalog) Search(query string) []*CatalogEntry {
+	lowered := strings.ToLower(query)
 
-	if c.Host.Identifier == "" {
-		return errors.New("host.identifier must not be empty")
-	}
+	var results []*CatalogEntry
 
-	seen := make(map[string]bool, len(c.Entries))
-
-	for _, entry := range c.Entries {
-		if entry.MediaType == "" {
-			return fmt.Errorf("entry %q: mediaType must not be empty", entry.Identifier)
+	for i := range c.Entries {
+		entry := &c.Entries[i]
+		if entryMatchesSubstring(entry, lowered) {
+			results = append(results, entry)
 		}
-
-		if seen[entry.Identifier] {
-			return fmt.Errorf("duplicate entry identifier: %q", entry.Identifier)
-		}
-
-		seen[entry.Identifier] = true
 	}
 
-	return nil
+	return results
 }
 
-// MarshalToJSON serializes the catalog to canonical JSON.
-func (c *AICatalog) MarshalToJSON() ([]byte, error) {
+// SearchByRegex returns all entries where pattern matches the Identifier,
+// DisplayName, Description, or any Tags value. The pattern is used verbatim
+// (it is not made case-insensitive). It returns an error if pattern is not a
+// valid regular expression.
+func (c *AICatalog) SearchByRegex(pattern string) ([]*CatalogEntry, error) {
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		return nil, fmt.Errorf("compile regex: %w", err)
+	}
+
+	var results []*CatalogEntry
+
+	for i := range c.Entries {
+		entry := &c.Entries[i]
+		if entryMatchesRegex(entry, re) {
+			results = append(results, entry)
+		}
+	}
+
+	return results, nil
+}
+
+// ToJSON serializes the catalog to compact JSON.
+func (c *AICatalog) ToJSON() ([]byte, error) {
 	data, err := json.Marshal(c)
 	if err != nil {
 		return nil, fmt.Errorf("marshal catalog: %w", err)
@@ -92,8 +103,30 @@ func (c *AICatalog) MarshalToJSON() ([]byte, error) {
 	return data, nil
 }
 
-// FromJSON parses a catalog from raw JSON bytes.
-func FromJSON(data []byte) (*AICatalog, error) {
+// ToJSONIndent serializes the catalog to indented (pretty) JSON.
+func (c *AICatalog) ToJSONIndent() ([]byte, error) {
+	data, err := json.MarshalIndent(c, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("marshal catalog: %w", err)
+	}
+
+	return data, nil
+}
+
+// WriteJSON writes the catalog as indented (pretty) JSON to w.
+func (c *AICatalog) WriteJSON(w io.Writer) error {
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+
+	if err := enc.Encode(c); err != nil {
+		return fmt.Errorf("encode catalog: %w", err)
+	}
+
+	return nil
+}
+
+// Parse parses an AI Catalog document from raw JSON bytes.
+func Parse(data []byte) (*AICatalog, error) {
 	var c AICatalog
 	if err := json.Unmarshal(data, &c); err != nil {
 		return nil, fmt.Errorf("parse catalog JSON: %w", err)
@@ -102,17 +135,32 @@ func FromJSON(data []byte) (*AICatalog, error) {
 	return &c, nil
 }
 
-// FromFile loads a catalog from a local JSON file.
-func FromFile(path string) (*AICatalog, error) {
+// ParseString parses an AI Catalog document from a JSON string.
+func ParseString(s string) (*AICatalog, error) {
+	return Parse([]byte(s))
+}
+
+// ParseReader parses an AI Catalog document from an io.Reader.
+func ParseReader(r io.Reader) (*AICatalog, error) {
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return nil, fmt.Errorf("read catalog: %w", err)
+	}
+
+	return Parse(data)
+}
+
+// ParseFile loads and parses an AI Catalog document from a local JSON file.
+func ParseFile(path string) (*AICatalog, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read catalog file: %w", err)
 	}
 
-	return FromJSON(data)
+	return Parse(data)
 }
 
-// FromURL fetches and parses a catalog from a remote URL.
+// FromURL fetches and parses an AI Catalog document from a remote URL.
 func FromURL(ctx context.Context, url string) (*AICatalog, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -130,45 +178,38 @@ func FromURL(ctx context.Context, url string) (*AICatalog, error) {
 		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
 
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read response body: %w", err)
-	}
-
-	return FromJSON(data)
+	return ParseReader(resp.Body)
 }
 
-// tryCompileRegex attempts to compile query as a case-insensitive regular expression.
-// Returns (nil, false) when the query is not valid regex.
-func tryCompileRegex(query string) (*regexp.Regexp, bool) {
-	re, err := regexp.Compile("(?i)" + query)
-	if err != nil {
-		return nil, false
+// entryMatchesSubstring reports whether the lowercased query is a substring of
+// any searchable field of entry.
+func entryMatchesSubstring(entry *CatalogEntry, loweredQuery string) bool {
+	if strings.Contains(strings.ToLower(entry.Identifier), loweredQuery) ||
+		strings.Contains(strings.ToLower(entry.DisplayName), loweredQuery) ||
+		strings.Contains(strings.ToLower(entry.Description), loweredQuery) {
+		return true
 	}
 
-	return re, true
+	for _, tag := range entry.Tags {
+		if strings.Contains(strings.ToLower(tag), loweredQuery) {
+			return true
+		}
+	}
+
+	return false
 }
 
-// fixedSearchFields is the number of non-tag fields inspected by matchesEntry.
-const fixedSearchFields = 3
+// entryMatchesRegex reports whether re matches any searchable field of entry.
+func entryMatchesRegex(entry *CatalogEntry, re *regexp.Regexp) bool {
+	if re.MatchString(entry.Identifier) ||
+		re.MatchString(entry.DisplayName) ||
+		re.MatchString(entry.Description) {
+		return true
+	}
 
-// matchesEntry reports whether any searchable field of entry matches the query.
-func matchesEntry(entry Entry, query string, re *regexp.Regexp, useRegex bool) bool {
-	fields := make([]string, 0, fixedSearchFields+len(entry.Tags))
-	fields = append(fields, entry.Identifier, entry.DisplayName, entry.Description)
-	fields = append(fields, entry.Tags...)
-
-	lowerQuery := strings.ToLower(query)
-
-	for _, field := range fields {
-		if useRegex {
-			if re.MatchString(field) {
-				return true
-			}
-		} else {
-			if strings.Contains(strings.ToLower(field), lowerQuery) {
-				return true
-			}
+	for _, tag := range entry.Tags {
+		if re.MatchString(tag) {
+			return true
 		}
 	}
 
