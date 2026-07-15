@@ -42,6 +42,24 @@ type AICatalog struct {
 	Metadata map[string]json.RawMessage `json:"metadata,omitempty"`
 }
 
+// MarshalJSON serializes the catalog, emitting the required "entries" member as
+// [] rather than null when it is empty.
+func (c AICatalog) MarshalJSON() ([]byte, error) {
+	type alias AICatalog
+
+	proxy := alias(c)
+	if proxy.Entries == nil {
+		proxy.Entries = []CatalogEntry{}
+	}
+
+	data, err := json.Marshal(proxy)
+	if err != nil {
+		return nil, fmt.Errorf("marshal catalog: %w", err)
+	}
+
+	return data, nil
+}
+
 // GetByID returns a pointer to the first entry whose Identifier exactly matches
 // id, and reports whether such an entry was found. The pointer references the
 // entry inside the catalog's Entries slice.

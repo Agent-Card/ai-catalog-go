@@ -100,9 +100,6 @@ type Attestation struct {
 	// URI is the location of the attestation document (HTTPS URL or Data URI).
 	URI string `json:"uri"`
 
-	// MediaType of the attestation document (e.g. "application/pdf").
-	MediaType string `json:"mediaType"`
-
 	// Digest is an integrity digest as "algorithm:hex" (SHA-256 or stronger).
 	Digest string `json:"digest,omitempty"`
 

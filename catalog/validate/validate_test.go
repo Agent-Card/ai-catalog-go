@@ -176,18 +176,67 @@ func TestValidate_RejectsMixedVersioning(t *testing.T) {
 	}
 }
 
-func TestValidate_RejectsMismatchedTrustIdentity(t *testing.T) {
+func TestValidate_RejectsMisalignedTrustIdentityDomain(t *testing.T) {
+	// Publisher domain acme.com vs identity domain evil.example.
 	result := validate.Validate(mustParse(t, `{
 		"specVersion": "1.0",
 		"entries": [
-			{"identifier": "urn:example:test", "displayName": "Test",
-			 "type": "application/json", "url": "https://example.com/test.json",
-			 "trustManifest": {"identity": "urn:example:other"}}
+			{"identifier": "urn:air:acme.com:agent:finance", "displayName": "Finance",
+			 "type": "application/json", "url": "https://example.com/finance.json",
+			 "trustManifest": {"identity": "did:web:evil.example"}}
 		]
 	}`))
 
-	if result.IsValid || !hasError(result, "does not match entry identifier") {
-		t.Errorf("expected trust identity mismatch error, got: %+v", result.Errors)
+	if result.IsValid || !hasError(result, "does not align with the entry identifier publisher domain") {
+		t.Errorf("expected trust identity domain-alignment error, got: %+v", result.Errors)
+	}
+}
+
+func TestValidate_AcceptsAlignedNonEqualTrustIdentity(t *testing.T) {
+	// SPIFFE identity under the same domain, not equal to the identifier.
+	result := validate.Validate(mustParse(t, `{
+		"specVersion": "1.0",
+		"host": {"displayName": "Acme"},
+		"entries": [
+			{"identifier": "urn:air:acme.com:agent:finance", "displayName": "Finance",
+			 "type": "application/json", "url": "https://example.com/finance.json",
+			 "trustManifest": {"identity": "spiffe://acme.com/ns/finance/sa/finance-pod"}}
+		]
+	}`))
+
+	if !result.IsValid {
+		t.Fatalf("expected valid aligned binding, errors: %+v", result.Errors)
+	}
+
+	if result.ConformanceLevel != validate.Trusted {
+		t.Errorf("level = %v, want Trusted", result.ConformanceLevel)
+	}
+}
+
+func TestValidate_RejectsMissingRequiredFields(t *testing.T) {
+	result := validate.Validate(mustParse(t, `{
+		"specVersion": "1.0",
+		"host": {"identifier": "did:web:example.com"},
+		"entries": [
+			{"url": "https://example.com/a.json",
+			 "publisher": {"identityType": "did"},
+			 "trustManifest": {"identityType": "did"}}
+		]
+	}`))
+
+	wants := []string{
+		"host.displayName is required",
+		"identifier is required and must not be empty",
+		"type is required and must not be empty",
+		"publisher.identifier is required",
+		"publisher.displayName is required",
+		"trustManifest.identity is required",
+	}
+
+	for _, want := range wants {
+		if !hasError(result, want) {
+			t.Errorf("expected error containing %q, got: %+v", want, result.Errors)
+		}
 	}
 }
 

@@ -138,6 +138,23 @@ func TestToJSON_RoundTrip(t *testing.T) {
 	}
 }
 
+func TestMarshalJSON_EmptyEntriesSerializesAsArray(t *testing.T) {
+	c := &AICatalog{SpecVersion: testSpecVersion}
+
+	data, err := c.ToJSON()
+	if err != nil {
+		t.Fatalf("ToJSON error: %v", err)
+	}
+
+	if !strings.Contains(string(data), `"entries":[]`) {
+		t.Errorf("empty entries should serialize as []: %s", data)
+	}
+
+	if strings.Contains(string(data), `"entries":null`) {
+		t.Errorf("entries must never serialize as null: %s", data)
+	}
+}
+
 func TestToJSONIndent(t *testing.T) {
 	c := validCatalog(t)
 

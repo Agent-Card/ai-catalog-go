@@ -133,14 +133,14 @@ func TestAnalyzeCatalog_Findings(t *testing.T) {
 			}
 		},
 		"entries": [
-			{"identifier": "urn:example:artifact", "displayName": "Artifact",
+			{"identifier": "urn:air:acme.com:agent:artifact", "displayName": "Artifact",
 			 "type": "application/json", "url": "https://example.com/artifact.json",
 			 "trustManifest": {
-				"identity": "plain-identifier",
+				"identity": "did:web:evil.example",
 				"signature": "header.payload.signature",
 				"trustSchema": {"identifier": "", "version": ""},
 				"attestations": [
-					{"type": "", "uri": "", "mediaType": "application/jwt", "digest": "md5:abcd"}
+					{"type": "", "uri": "", "digest": "md5:abcd"}
 				],
 				"provenance": [
 					{"relation": "", "sourceId": "", "sourceDigest": "sha256:not-hex!"}
@@ -160,8 +160,7 @@ func TestAnalyzeCatalog_Findings(t *testing.T) {
 	wants := []string{
 		"host trustManifest.identity 'did:web:other.example.com' SHOULD match host.identifier 'did:web:example.com'",
 		"signature must use detached JWS compact serialization",
-		"trustManifest.identity 'plain-identifier' MUST match entry identifier 'urn:example:artifact'",
-		"trust manifest identity SHOULD be a URI-like identifier",
+		"trustManifest.identity domain 'evil.example' MUST align with entry identifier publisher domain 'acme.com'",
 		"weaker than SHA-256",
 		"attestation type must not be empty",
 		"provenance relation must not be empty",
@@ -171,6 +170,25 @@ func TestAnalyzeCatalog_Findings(t *testing.T) {
 		if !containsFinding(report, want) {
 			t.Errorf("missing expected finding containing %q", want)
 		}
+	}
+}
+
+func TestAnalyzeCatalog_NonURIIdentityWarns(t *testing.T) {
+	report := trust.AnalyzeCatalog(mustParse(t, `{
+		"specVersion": "1.0",
+		"entries": [
+			{"identifier": "urn:example:artifact", "displayName": "Artifact",
+			 "type": "application/json", "url": "https://example.com/artifact.json",
+			 "trustManifest": {"identity": "plain-identifier"}}
+		]
+	}`))
+
+	if !containsFinding(report, "trust manifest identity SHOULD be a URI-like identifier") {
+		t.Errorf("expected URI-like identity warning, got: %+v", report.Findings)
+	}
+
+	if containsFinding(report, "MUST align with entry identifier publisher domain") {
+		t.Errorf("did not expect a domain-alignment error for a non-urn:air identifier: %+v", report.Findings)
 	}
 }
 

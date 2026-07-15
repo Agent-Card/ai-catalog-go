@@ -130,11 +130,33 @@ func anyEntryHasTrustManifest(entries []catalog.CatalogEntry) bool {
 
 func (v *validator) validateCatalog(c *catalog.AICatalog, path string, depth int) {
 	v.validateSpecVersion(c.SpecVersion, path+".specVersion")
+	v.validateHost(c.Host, path+".host")
 	v.validateMetadataKeys(c.Metadata, path+".metadata")
 	v.validateEntryUniqueness(c.Entries, path)
 
 	for i := range c.Entries {
 		v.validateEntry(&c.Entries[i], fmt.Sprintf("%s.entries[%d]", path, i), depth)
+	}
+}
+
+// validateHost enforces the required Host Info members: displayName, and
+// trustManifest.identity when a host trust manifest is present.
+func (v *validator) validateHost(host *catalog.HostInfo, path string) {
+	if host == nil {
+		return
+	}
+
+	if host.DisplayName == "" {
+		v.addError(path+".displayName", "host.displayName is required and must not be empty")
+	}
+
+	if host.TrustManifest != nil {
+		v.validateMetadataKeys(host.TrustManifest.Metadata, path+".trustManifest.metadata")
+
+		if host.TrustManifest.Identity == "" {
+			v.addError(path+".trustManifest.identity",
+				"trustManifest.identity is required and must not be empty")
+		}
 	}
 }
 
@@ -189,14 +211,43 @@ func (v *validator) checkVersionedEntry(
 }
 
 func (v *validator) validateEntry(entry *catalog.CatalogEntry, path string, depth int) {
+	v.validateRequiredEntryFields(entry, path)
 	v.validateArtifactSource(entry, path)
 	v.validateUpdatedAt(entry, path)
 	v.validateMetadataKeys(entry.Metadata, path+".metadata")
+	v.validatePublisher(entry.Publisher, path+".publisher")
 	v.validateEntryTrust(entry, path)
 	v.validateNestedCatalog(entry, path, depth)
 
-	if !strings.Contains(entry.Identifier, ":") {
+	if entry.Identifier != "" && !strings.Contains(entry.Identifier, ":") {
 		v.addWarning(path+".identifier", "identifier SHOULD be a URN or URI")
+	}
+}
+
+// validateRequiredEntryFields checks identifier and type; the url/data
+// requirement is handled by validateArtifactSource.
+func (v *validator) validateRequiredEntryFields(entry *catalog.CatalogEntry, path string) {
+	if entry.Identifier == "" {
+		v.addError(path+".identifier", "identifier is required and must not be empty")
+	}
+
+	if entry.Type == "" {
+		v.addError(path+".type", "type is required and must not be empty")
+	}
+}
+
+// validatePublisher requires identifier and displayName when a publisher is set.
+func (v *validator) validatePublisher(publisher *catalog.Publisher, path string) {
+	if publisher == nil {
+		return
+	}
+
+	if publisher.Identifier == "" {
+		v.addError(path+".identifier", "publisher.identifier is required and must not be empty")
+	}
+
+	if publisher.DisplayName == "" {
+		v.addError(path+".displayName", "publisher.displayName is required and must not be empty")
 	}
 }
 
@@ -224,16 +275,29 @@ func (v *validator) validateUpdatedAt(entry *catalog.CatalogEntry, path string) 
 }
 
 func (v *validator) validateEntryTrust(entry *catalog.CatalogEntry, path string) {
-	if entry.TrustManifest == nil {
+	manifest := entry.TrustManifest
+	if manifest == nil {
 		return
 	}
 
-	v.validateMetadataKeys(entry.TrustManifest.Metadata, path+".trustManifest.metadata")
+	v.validateMetadataKeys(manifest.Metadata, path+".trustManifest.metadata")
 
-	if entry.TrustManifest.Identity != entry.Identifier {
+	if manifest.Identity == "" {
+		v.addError(path+".trustManifest.identity",
+			"trustManifest.identity is required and must not be empty")
+
+		return
+	}
+
+	// Identity binds to the entry by domain alignment, not exact equality.
+	if aligned, determinable := catalog.IdentityBindsToEntry(
+		entry.Identifier, manifest.Identity); determinable && !aligned {
+		publisherDomain, _ := catalog.PublisherDomain(entry.Identifier)
+		identityDomain, _ := catalog.IdentityDomain(manifest.Identity)
+
 		v.addError(path+".trustManifest.identity", fmt.Sprintf(
-			"trustManifest.identity %q does not match entry identifier %q",
-			entry.TrustManifest.Identity, entry.Identifier))
+			"trustManifest.identity domain %q does not align with the entry identifier publisher domain %q",
+			identityDomain, publisherDomain))
 	}
 }
 
