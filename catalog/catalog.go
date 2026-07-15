@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -207,11 +208,5 @@ func entryMatchesRegex(entry *CatalogEntry, re *regexp.Regexp) bool {
 		return true
 	}
 
-	for _, tag := range entry.Tags {
-		if re.MatchString(tag) {
-			return true
-		}
-	}
-
-	return false
+	return slices.ContainsFunc(entry.Tags, re.MatchString)
 }

@@ -11,6 +11,13 @@ import (
 	"strings"
 )
 
+// File modes for OCI layout output: files are owner read/write, directories are
+// owner read/write/execute plus group read/execute.
+const (
+	layoutFileMode = 0o600
+	layoutDirMode  = 0o750
+)
+
 // AttachCosignVerificationArtifacts attaches a detached cosign signature and
 // its public key as OCI referrers to the entry manifest identified by
 // subjectDigest.
@@ -23,7 +30,7 @@ func (set *ArtifactSet) AttachCosignVerificationArtifacts(
 		return fmt.Errorf("%w: %q", ErrMissingSubjectDescriptor, subjectDigest)
 	}
 
-	signatureManifest := set.buildCosignReferrer(
+	signatureManifest, err := set.buildCosignReferrer(
 		cosignReferrerParams{
 			artifactType:    CosignSignatureArtifactType,
 			configMediaType: CosignSignatureConfigMedia,
@@ -37,8 +44,11 @@ func (set *ArtifactSet) AttachCosignVerificationArtifacts(
 			annotations:    cosignSignatureAnnotations(identity, payloadDigest),
 			subject:        subject,
 		})
+	if err != nil {
+		return err
+	}
 
-	publicKeyManifest := set.buildCosignReferrer(
+	publicKeyManifest, err := set.buildCosignReferrer(
 		cosignReferrerParams{
 			artifactType:    CosignPublicKeyArtifactType,
 			configMediaType: CosignPublicKeyConfigMedia,
@@ -52,6 +62,9 @@ func (set *ArtifactSet) AttachCosignVerificationArtifacts(
 			annotations:    cosignPublicKeyAnnotations(identity, payloadDigest),
 			subject:        subject,
 		})
+	if err != nil {
+		return err
+	}
 
 	set.Referrers[subjectDigest] = append(set.Referrers[subjectDigest], signatureManifest, publicKeyManifest)
 
@@ -68,10 +81,14 @@ type cosignReferrerParams struct {
 	subject         OCIDescriptor
 }
 
-func (set *ArtifactSet) buildCosignReferrer(params cosignReferrerParams) OCIImageManifest {
-	configBytes, _ := json.Marshal(params.config)
-	configDescriptor := storeBlob(set.Blobs, configBytes, params.configMediaType, "", nil)
-	layerDescriptor := storeBlob(set.Blobs, params.layer, params.layerMediaType, "", nil)
+func (set *ArtifactSet) buildCosignReferrer(params cosignReferrerParams) (OCIImageManifest, error) {
+	configBytes, err := json.Marshal(params.config)
+	if err != nil {
+		return OCIImageManifest{}, fmt.Errorf("marshal cosign referrer config: %w", err)
+	}
+
+	configDescriptor := storeBlob(set.Blobs, configBytes, params.configMediaType)
+	layerDescriptor := storeBlob(set.Blobs, params.layer, params.layerMediaType)
 	subject := params.subject
 
 	return OCIImageManifest{
@@ -82,7 +99,7 @@ func (set *ArtifactSet) buildCosignReferrer(params cosignReferrerParams) OCIImag
 		Layers:        []OCIDescriptor{layerDescriptor},
 		Subject:       &subject,
 		Annotations:   params.annotations,
-	}
+	}, nil
 }
 
 func (set *ArtifactSet) findIndexDescriptor(digest string) (OCIDescriptor, bool) {
@@ -210,11 +227,11 @@ func writeLayoutIndexFiles(layoutDir string, descriptors []OCIDescriptor) error 
 		return fmt.Errorf("marshal layout metadata: %w", err)
 	}
 
-	if err := os.WriteFile(filepath.Join(layoutDir, "index.json"), indexBytes, 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(layoutDir, "index.json"), indexBytes, layoutFileMode); err != nil {
 		return fmt.Errorf("write index.json: %w", err)
 	}
 
-	if err := os.WriteFile(filepath.Join(layoutDir, "oci-layout"), metadataBytes, 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(layoutDir, "oci-layout"), metadataBytes, layoutFileMode); err != nil {
 		return fmt.Errorf("write oci-layout: %w", err)
 	}
 
@@ -376,14 +393,14 @@ func prepareLayoutDirectory(layoutDir string) error {
 			return fmt.Errorf("%w: %q", ErrNonEmptyLayoutDirectory, layoutDir)
 		}
 	case os.IsNotExist(err):
-		if mkErr := os.MkdirAll(layoutDir, 0o750); mkErr != nil {
+		if mkErr := os.MkdirAll(layoutDir, layoutDirMode); mkErr != nil {
 			return fmt.Errorf("create layout dir: %w", mkErr)
 		}
 	case err != nil:
 		return fmt.Errorf("stat layout dir: %w", err)
 	}
 
-	if err := os.MkdirAll(filepath.Join(layoutDir, "blobs"), 0o750); err != nil {
+	if err := os.MkdirAll(filepath.Join(layoutDir, "blobs"), layoutDirMode); err != nil {
 		return fmt.Errorf("create blobs dir: %w", err)
 	}
 
@@ -406,11 +423,11 @@ func writeLayoutBlob(layoutDir, digest string, data []byte) error {
 	}
 
 	blobDir := filepath.Join(layoutDir, "blobs", algorithm)
-	if err := os.MkdirAll(blobDir, 0o750); err != nil {
+	if err := os.MkdirAll(blobDir, layoutDirMode); err != nil {
 		return fmt.Errorf("create blob dir: %w", err)
 	}
 
-	if err := os.WriteFile(filepath.Join(blobDir, encoded), data, 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(blobDir, encoded), data, layoutFileMode); err != nil {
 		return fmt.Errorf("write blob: %w", err)
 	}
 

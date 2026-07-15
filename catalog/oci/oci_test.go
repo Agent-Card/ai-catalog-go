@@ -86,8 +86,14 @@ func assertCatalogsEqual(t *testing.T, want, got *catalog.AICatalog) {
 	}
 
 	var wantAny, gotAny any
-	_ = json.Unmarshal(wantJSON, &wantAny)
-	_ = json.Unmarshal(gotJSON, &gotAny)
+
+	if err := json.Unmarshal(wantJSON, &wantAny); err != nil {
+		t.Fatalf("unmarshal want: %v", err)
+	}
+
+	if err := json.Unmarshal(gotJSON, &gotAny); err != nil {
+		t.Fatalf("unmarshal got: %v", err)
+	}
 
 	if !reflect.DeepEqual(wantAny, gotAny) {
 		t.Errorf("catalog round-trip mismatch:\n want %s\n  got %s", wantJSON, gotJSON)

@@ -168,8 +168,8 @@ func descriptorForBytes(data []byte, mediaType, artifactType string, annotations
 }
 
 // storeBlob records bytes in blobs keyed by digest and returns its descriptor.
-func storeBlob(blobs map[string][]byte, data []byte, mediaType, artifactType string, annotations map[string]string) OCIDescriptor {
-	descriptor := descriptorForBytes(data, mediaType, artifactType, annotations)
+func storeBlob(blobs map[string][]byte, data []byte, mediaType string) OCIDescriptor {
+	descriptor := descriptorForBytes(data, mediaType, "", nil)
 	blobs[descriptor.Digest] = append([]byte(nil), data...)
 
 	return descriptor

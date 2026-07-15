@@ -5,10 +5,17 @@ package oci
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/agntcy/ai-catalog-go-sdk/catalog"
 )
+
+// errValueAbsent is an internal sentinel meaning an optional annotation or
+// referrer was not present. Callers treat it as "no value", not a failure, via
+// errors.Is; it lets absence be distinguished from parse errors without
+// returning a bare (nil, nil).
+var errValueAbsent = errors.New("optional value absent")
 
 // PackCatalog converts an AI Catalog document into an OCI artifact set. Each
 // entry becomes an OCI image manifest; an entry trust manifest becomes a
@@ -55,7 +62,7 @@ func (set *ArtifactSet) packEntry(entry *catalog.CatalogEntry) (OCIDescriptor, e
 		return OCIDescriptor{}, fmt.Errorf("marshal entry config: %w", err)
 	}
 
-	configDescriptor := storeBlob(set.Blobs, configBytes, EntryConfigMediaType, "", nil)
+	configDescriptor := storeBlob(set.Blobs, configBytes, EntryConfigMediaType)
 
 	layers, err := set.packEntryLayers(entry)
 	if err != nil {
@@ -96,7 +103,7 @@ func (set *ArtifactSet) packEntryLayers(entry *catalog.CatalogEntry) ([]OCIDescr
 	case hasURL && !hasData:
 		return nil, nil
 	case !hasURL && hasData:
-		layer := storeBlob(set.Blobs, entry.Data, entry.Type, "", nil)
+		layer := storeBlob(set.Blobs, entry.Data, entry.Type)
 
 		return []OCIDescriptor{layer}, nil
 	default:
@@ -114,7 +121,7 @@ func (set *ArtifactSet) packEntryTrustReferrer(entry *catalog.CatalogEntry, subj
 		return fmt.Errorf("marshal trust manifest: %w", err)
 	}
 
-	trustConfig := storeBlob(set.Blobs, trustBytes, TrustManifestConfigMediaType, "", nil)
+	trustConfig := storeBlob(set.Blobs, trustBytes, TrustManifestConfigMediaType)
 	referrer := OCIImageManifest{
 		SchemaVersion: ociSchemaVersion,
 		MediaType:     OCIImageManifestMediaType,
@@ -141,12 +148,12 @@ func UnpackCatalog(set *ArtifactSet) (*catalog.AICatalog, error) {
 	}
 
 	host, err := hostFromAnnotations(set.Index.Annotations)
-	if err != nil {
+	if err != nil && !errors.Is(err, errValueAbsent) {
 		return nil, err
 	}
 
 	metadata, err := metadataFromAnnotations(set.Index.Annotations)
-	if err != nil {
+	if err != nil && !errors.Is(err, errValueAbsent) {
 		return nil, err
 	}
 
@@ -191,7 +198,7 @@ func (set *ArtifactSet) unpackEntry(descriptor *OCIDescriptor) (catalog.CatalogE
 	}
 
 	trustManifest, err := set.unpackEntryTrust(descriptor.Digest)
-	if err != nil {
+	if err != nil && !errors.Is(err, errValueAbsent) {
 		return catalog.CatalogEntry{}, err
 	}
 
@@ -250,7 +257,7 @@ func (set *ArtifactSet) unpackEntryTrust(subjectDigest string) (*catalog.TrustMa
 		return &manifest, nil
 	}
 
-	return nil, nil
+	return nil, errValueAbsent
 }
 
 func entryType(descriptor *OCIDescriptor, manifest *OCIImageManifest) string {
@@ -288,7 +295,7 @@ func catalogAnnotations(c *catalog.AICatalog) (map[string]string, error) {
 func hostFromAnnotations(annotations map[string]string) (*catalog.HostInfo, error) {
 	raw, ok := annotations[annotationHost]
 	if !ok {
-		return nil, nil
+		return nil, errValueAbsent
 	}
 
 	var host catalog.HostInfo
@@ -302,7 +309,7 @@ func hostFromAnnotations(annotations map[string]string) (*catalog.HostInfo, erro
 func metadataFromAnnotations(annotations map[string]string) (map[string]json.RawMessage, error) {
 	raw, ok := annotations[annotationMetadata]
 	if !ok {
-		return nil, nil
+		return nil, errValueAbsent
 	}
 
 	var metadata map[string]json.RawMessage
