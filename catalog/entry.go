@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 )
 
 // CatalogEntry describes a single AI artifact: it identifies the artifact,
@@ -67,6 +68,25 @@ type CatalogEntry struct {
 // Catalog (i.e. its Type is "application/ai-catalog+json").
 func (e *CatalogEntry) IsNestedCatalog() bool {
 	return e.Type == MediaTypeCatalog
+}
+
+// ResolveDisplayName returns a human-readable name for the entry, following the
+// spec's display-name resolution order for the steps that do not require
+// fetching the referenced artifact: the entry's DisplayName when set, otherwise
+// the trailing segment of Identifier (the portion after its final ':' or '/';
+// e.g. "urn:air:example.com:mcp:weather" yields "weather"). A consumer that has
+// already fetched or cached the artifact should prefer the artifact's own
+// canonical name (spec step 2) over this identifier fallback.
+func (e *CatalogEntry) ResolveDisplayName() string {
+	if e.DisplayName != "" {
+		return e.DisplayName
+	}
+
+	if i := strings.LastIndexAny(e.Identifier, ":/"); i >= 0 {
+		return e.Identifier[i+1:]
+	}
+
+	return e.Identifier
 }
 
 // Pull fetches the artifact at the entry's URL and returns its raw bytes.

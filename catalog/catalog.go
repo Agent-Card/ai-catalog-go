@@ -7,11 +7,9 @@
 package catalog
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"regexp"
 	"slices"
@@ -22,6 +20,10 @@ import (
 // document. An entry whose Type equals this value embeds or references another
 // AI Catalog.
 const MediaTypeCatalog = "application/ai-catalog+json"
+
+// WellKnownPath is the spec's well-known URI path (RFC 8615) at which a host MAY
+// serve its AI Catalog to enable automated domain-level discovery.
+const WellKnownPath = "/.well-known/ai-catalog.json"
 
 // AICatalog is the top-level container for discovering heterogeneous AI
 // artifacts (MCP servers, A2A agents, skills, nested catalogs, etc.).
@@ -71,6 +73,21 @@ func (c *AICatalog) GetByID(id string) (*CatalogEntry, bool) {
 	}
 
 	return nil, false
+}
+
+// GetByType returns all entries whose Type (media type) exactly matches
+// mediaType. The returned pointers reference entries inside the catalog's
+// Entries slice; the result is nil when there are no matches.
+func (c *AICatalog) GetByType(mediaType string) []*CatalogEntry {
+	var results []*CatalogEntry
+
+	for i := range c.Entries {
+		if c.Entries[i].Type == mediaType {
+			results = append(results, &c.Entries[i])
+		}
+	}
+
+	return results
 }
 
 // Search returns all entries where query appears (case-insensitively) in the
@@ -177,27 +194,6 @@ func ParseFile(path string) (*AICatalog, error) {
 	}
 
 	return Parse(data)
-}
-
-// FromURL fetches and parses an AI Catalog document from a remote URL.
-func FromURL(ctx context.Context, url string) (*AICatalog, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("create request: %w", err)
-	}
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("fetch catalog: %w", err)
-	}
-
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
-	}
-
-	return ParseReader(resp.Body)
 }
 
 // entryMatchesSubstring reports whether the lowercased query is a substring of

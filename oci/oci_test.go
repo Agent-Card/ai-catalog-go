@@ -12,7 +12,7 @@ import (
 	"testing"
 
 	"github.com/agntcy/ai-catalog-go-sdk/catalog"
-	"github.com/agntcy/ai-catalog-go-sdk/catalog/oci"
+	"github.com/agntcy/ai-catalog-go-sdk/oci"
 )
 
 const inlineWithTrust = `{

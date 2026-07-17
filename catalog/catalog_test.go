@@ -19,6 +19,7 @@ const (
 	financeID       = "urn:example:agent:finance-v1"
 	nlpID           = "urn:example:data:nlp-corpus"
 	embeddingID     = "urn:example:model:embedding-v2"
+	modifiedName    = "Modified"
 )
 
 var validCatalogJSON = []byte(`{
@@ -210,34 +211,6 @@ func TestParseFile_NotFound(t *testing.T) {
 	}
 }
 
-func TestFromURL_Valid(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write(validCatalogJSON)
-	}))
-	defer srv.Close()
-
-	c, err := FromURL(context.Background(), srv.URL)
-	if err != nil {
-		t.Fatalf("FromURL error: %v", err)
-	}
-
-	if c.SpecVersion != testSpecVersion {
-		t.Errorf("SpecVersion = %q", c.SpecVersion)
-	}
-}
-
-func TestFromURL_Non200(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		http.Error(w, "not found", http.StatusNotFound)
-	}))
-	defer srv.Close()
-
-	if _, err := FromURL(context.Background(), srv.URL); err == nil {
-		t.Fatal("expected error for non-200 response, got nil")
-	}
-}
-
 func TestGetByID(t *testing.T) {
 	c := validCatalog(t)
 
@@ -268,10 +241,150 @@ func TestGetByID_ReturnsPointerIntoSlice(t *testing.T) {
 		t.Fatal("expected hit")
 	}
 
-	entry.DisplayName = "Modified"
+	entry.DisplayName = modifiedName
 
-	if c.Entries[1].DisplayName != "Modified" {
+	if c.Entries[1].DisplayName != modifiedName {
 		t.Error("GetByID should return a pointer into the Entries slice")
+	}
+}
+
+func TestGetByType(t *testing.T) {
+	c := validCatalog(t)
+
+	agents := c.GetByType("application/a2a-agent-card+json")
+	if len(agents) != 1 || agents[0].Identifier != financeID {
+		t.Errorf("GetByType(agent) = %+v", agents)
+	}
+
+	if got := c.GetByType("application/does-not-exist"); got != nil {
+		t.Errorf("GetByType(unknown) = %+v, want nil", got)
+	}
+}
+
+func TestGetByType_ReturnsPointerIntoSlice(t *testing.T) {
+	c := validCatalog(t)
+
+	results := c.GetByType("application/gguf")
+	if len(results) != 1 {
+		t.Fatalf("len = %d, want 1", len(results))
+	}
+
+	results[0].DisplayName = modifiedName
+
+	if c.Entries[2].DisplayName != modifiedName {
+		t.Error("GetByType should return pointers into the Entries slice")
+	}
+}
+
+const versionedID = "urn:air:acme.com:agent:finance"
+
+func versionedCatalog(t *testing.T) *AICatalog {
+	t.Helper()
+
+	c, err := ParseString(`{
+		"specVersion": "1.0",
+		"entries": [
+			{"identifier": "` + versionedID + `", "version": "2.0.0", "type": "application/a2a-agent-card+json", "url": "https://x/2.0.0", "updatedAt": "2026-01-20T08:00:00Z"},
+			{"identifier": "` + versionedID + `", "version": "2.1.0", "type": "application/a2a-agent-card+json", "url": "https://x/2.1.0", "updatedAt": "2026-03-15T10:00:00Z"},
+			{"identifier": "` + versionedID + `", "version": "2.0.1", "type": "application/a2a-agent-card+json", "url": "https://x/2.0.1", "updatedAt": "2026-02-01T08:00:00Z"}
+		]
+	}`)
+	if err != nil {
+		t.Fatalf("parse fixture: %v", err)
+	}
+
+	return c
+}
+
+func TestGetByIDAndVersion(t *testing.T) {
+	c := versionedCatalog(t)
+
+	entry, ok := c.GetByIDAndVersion(versionedID, "2.0.1")
+	if !ok || entry.URL != "https://x/2.0.1" {
+		t.Fatalf("GetByIDAndVersion = %+v, ok=%v", entry, ok)
+	}
+
+	if _, ok := c.GetByIDAndVersion(versionedID, "9.9.9"); ok {
+		t.Error("expected miss for unknown version")
+	}
+}
+
+func TestVersions(t *testing.T) {
+	c := versionedCatalog(t)
+
+	if got := c.Versions(versionedID); len(got) != 3 {
+		t.Errorf("Versions = %d, want 3", len(got))
+	}
+
+	if got := c.Versions("urn:does:not:exist"); got != nil {
+		t.Errorf("Versions(unknown) = %+v, want nil", got)
+	}
+}
+
+func TestGetLatest_Semver(t *testing.T) {
+	c := versionedCatalog(t)
+
+	entry, ok := c.GetLatest(versionedID)
+	if !ok || entry.Version != "2.1.0" {
+		t.Fatalf("GetLatest = %+v, ok=%v, want version 2.1.0", entry, ok)
+	}
+
+	if _, ok := c.GetLatest("urn:does:not:exist"); ok {
+		t.Error("expected miss for unknown identifier")
+	}
+}
+
+func TestGetLatest_FallbackToUpdatedAt(t *testing.T) {
+	c, err := ParseString(`{
+		"specVersion": "1.0",
+		"entries": [
+			{"identifier": "urn:x", "type": "application/octet-stream", "url": "https://x/old", "updatedAt": "2026-01-01T00:00:00Z"},
+			{"identifier": "urn:x", "type": "application/octet-stream", "url": "https://x/new", "updatedAt": "2026-05-01T00:00:00Z"}
+		]
+	}`)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+
+	entry, ok := c.GetLatest("urn:x")
+	if !ok || entry.URL != "https://x/new" {
+		t.Fatalf("GetLatest (updatedAt fallback) = %+v, ok=%v", entry, ok)
+	}
+}
+
+func TestGetLatest_PrefersSemverOverUnparseable(t *testing.T) {
+	c, err := ParseString(`{
+		"specVersion": "1.0",
+		"entries": [
+			{"identifier": "urn:m", "version": "1.0.0", "type": "application/octet-stream", "url": "https://m/semver", "updatedAt": "2026-01-01T00:00:00Z"},
+			{"identifier": "urn:m", "version": "latest", "type": "application/octet-stream", "url": "https://m/tag", "updatedAt": "2026-09-01T00:00:00Z"}
+		]
+	}`)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+
+	entry, ok := c.GetLatest("urn:m")
+	if !ok || entry.URL != "https://m/semver" {
+		t.Fatalf("GetLatest should prefer parseable semver, got %+v", entry)
+	}
+}
+
+func TestResolveDisplayName(t *testing.T) {
+	cases := []struct {
+		entry CatalogEntry
+		want  string
+	}{
+		{CatalogEntry{DisplayName: "Weather", Identifier: "urn:air:example.com:mcp:weather"}, "Weather"},
+		{CatalogEntry{Identifier: "urn:air:example.com:mcp:weather"}, "weather"},
+		{CatalogEntry{Identifier: "https://example.com/agents/research"}, "research"},
+		{CatalogEntry{Identifier: "bare"}, "bare"},
+	}
+
+	for _, tc := range cases {
+		if got := tc.entry.ResolveDisplayName(); got != tc.want {
+			t.Errorf("ResolveDisplayName(%+v) = %q, want %q", tc.entry, got, tc.want)
+		}
 	}
 }
 

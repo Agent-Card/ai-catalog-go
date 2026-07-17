@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/agntcy/ai-catalog-go-sdk/catalog"
-	"github.com/agntcy/ai-catalog-go-sdk/catalog/validate"
+	"github.com/agntcy/ai-catalog-go-sdk/validate"
 )
 
 func mustParse(t *testing.T, doc string) *catalog.AICatalog {

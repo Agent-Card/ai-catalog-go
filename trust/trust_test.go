@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/agntcy/ai-catalog-go-sdk/catalog"
-	"github.com/agntcy/ai-catalog-go-sdk/catalog/trust"
+	"github.com/agntcy/ai-catalog-go-sdk/trust"
 )
 
 // SHA-256 of the ASCII bytes "test".
