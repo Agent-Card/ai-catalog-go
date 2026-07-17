@@ -11,10 +11,8 @@ import (
 	"github.com/agntcy/ai-catalog-go-sdk/catalog"
 )
 
-// errValueAbsent is an internal sentinel meaning an optional annotation or
-// referrer was not present. Callers treat it as "no value", not a failure, via
-// errors.Is; it lets absence be distinguished from parse errors without
-// returning a bare (nil, nil).
+// errValueAbsent is a sentinel distinguishing an absent optional value from a
+// parse error; callers test for it with errors.Is.
 var errValueAbsent = errors.New("optional value absent")
 
 // PackCatalog converts an AI Catalog document into an OCI artifact set. Each

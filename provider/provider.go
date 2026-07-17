@@ -18,19 +18,15 @@ import (
 	"github.com/agntcy/ai-catalog-go-sdk/catalog"
 )
 
-// DefaultMaxDepth is the default maximum nesting depth to which built-in
-// providers resolve nested catalogs. It matches the depth limit recommended by
-// the AI Catalog specification.
+// DefaultMaxDepth is the default nested-catalog resolution depth.
 const DefaultMaxDepth = 4
 
-// maxResponseBytes caps the size of a document read by the default Fetcher to
-// bound memory use on untrusted input.
+// maxResponseBytes caps a document read by the default Fetcher.
 const maxResponseBytes = 10 << 20 // 10 MiB
 
-// Fetcher retrieves the raw bytes of a document at url. It abstracts the
-// transport used to load a catalog and resolve URL-referenced nested catalogs
-// so callers can plug in custom HTTP clients, authentication, caching, or
-// offline resolvers.
+// Fetcher retrieves the raw bytes of a document at url, abstracting the
+// transport so callers can plug in custom clients, auth, caching, or offline
+// resolvers.
 type Fetcher interface {
 	Fetch(ctx context.Context, url string) ([]byte, error)
 }
@@ -117,9 +113,8 @@ func (h *httpFetcher) Fetch(ctx context.Context, url string) ([]byte, error) {
 	return data, nil
 }
 
-// resolvedSource is a catalog.Source backed by a tree that has been fully
-// resolved (all reachable nested catalogs fetched/parsed) at construction time.
-// It is safe for concurrent use because it is read-only after construction.
+// resolvedSource is a catalog.Source backed by a tree fully resolved at
+// construction time. It is read-only and safe for concurrent use.
 type resolvedSource struct {
 	root     *catalog.AICatalog
 	catalogs []*catalog.AICatalog // root first, then every resolved nested catalog
@@ -127,9 +122,8 @@ type resolvedSource struct {
 
 var _ catalog.Source = (*resolvedSource)(nil)
 
-// FromCatalog wraps an already-parsed AI Catalog as a catalog.Source,
-// resolving any nested catalogs it references (inline data, and URLs via the
-// configured Fetcher) up to the configured depth.
+// FromCatalog wraps an already-parsed AI Catalog as a catalog.Source, resolving
+// nested catalogs (inline and URL-referenced) up to the configured depth.
 func FromCatalog(ctx context.Context, c *catalog.AICatalog, opts ...Option) (catalog.Source, error) {
 	if c == nil {
 		return nil, errors.New("catalog is nil")
@@ -138,9 +132,8 @@ func FromCatalog(ctx context.Context, c *catalog.AICatalog, opts ...Option) (cat
 	return build(ctx, c, "", newConfig(opts...))
 }
 
-// JSON creates a catalog.Source from a local AI Catalog JSON file.
-// URL-referenced nested catalogs are resolved via the configured Fetcher (HTTP
-// by default).
+// JSON creates a catalog.Source from a local AI Catalog JSON file, resolving
+// URL-referenced nested catalogs via the configured Fetcher (HTTP by default).
 func JSON(ctx context.Context, path string, opts ...Option) (catalog.Source, error) {
 	c, err := catalog.ParseFile(path)
 	if err != nil {
@@ -150,9 +143,9 @@ func JSON(ctx context.Context, path string, opts ...Option) (catalog.Source, err
 	return build(ctx, c, "file://"+path, newConfig(opts...))
 }
 
-// Web creates a catalog.Source from an AI Catalog served at url (for example a
-// host's "/.well-known/ai-catalog.json"). The root document and any
-// URL-referenced nested catalogs are retrieved via the configured Fetcher.
+// Web creates a catalog.Source from an AI Catalog served at url. The root
+// document and any URL-referenced nested catalogs are retrieved via the
+// configured Fetcher.
 func Web(ctx context.Context, url string, opts ...Option) (catalog.Source, error) {
 	cfg := newConfig(opts...)
 
@@ -169,11 +162,9 @@ func Web(ctx context.Context, url string, opts ...Option) (catalog.Source, error
 	return build(ctx, c, url, cfg)
 }
 
-// WellKnown creates a catalog.Source from the AI Catalog served at the spec's
-// well-known URI for domain — "https://{domain}/.well-known/ai-catalog.json" —
-// which is the conventional entry point for domain-level discovery. domain is a
-// bare host (any leading scheme and trailing slash are trimmed); the fetch and
-// nested-catalog resolution are performed exactly as by Web.
+// WellKnown creates a catalog.Source from the AI Catalog served at
+// "https://{domain}/.well-known/ai-catalog.json". domain is a bare host (any
+// leading scheme and trailing slash are trimmed); resolution behaves as Web.
 func WellKnown(ctx context.Context, domain string, opts ...Option) (catalog.Source, error) {
 	host := strings.TrimSpace(domain)
 	host = strings.TrimPrefix(host, "https://")
@@ -187,9 +178,8 @@ func WellKnown(ctx context.Context, domain string, opts ...Option) (catalog.Sour
 	return Web(ctx, "https://"+host+catalog.WellKnownPath, opts...)
 }
 
-// build resolves the catalog tree rooted at root and returns a ready
-// catalog.Source. rootKey identifies the root source for cycle detection; it
-// may be empty.
+// build resolves the tree rooted at root into a catalog.Source. rootKey seeds
+// cycle detection and may be empty.
 func build(ctx context.Context, root *catalog.AICatalog, rootKey string, cfg config) (catalog.Source, error) {
 	r := &resolver{
 		fetcher:  cfg.fetcher,
@@ -207,10 +197,9 @@ func build(ctx context.Context, root *catalog.AICatalog, rootKey string, cfg con
 	return &resolvedSource{root: root, catalogs: r.catalogs}, nil
 }
 
-// resolver performs a depth-limited, cycle-safe traversal of a catalog tree,
-// collecting every reachable catalog. Nested catalogs that cannot be fetched or
-// parsed are skipped (best-effort resolution); only context cancellation aborts
-// the traversal.
+// resolver performs a depth-limited, cycle-safe traversal collecting every
+// reachable catalog. Nested catalogs that cannot be fetched or parsed are
+// skipped; only context cancellation aborts the traversal.
 type resolver struct {
 	fetcher  Fetcher
 	maxDepth int

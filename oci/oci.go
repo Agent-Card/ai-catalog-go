@@ -211,8 +211,7 @@ func cosignPublicKeyAnnotations(identity, payloadDigest string) map[string]strin
 	}
 }
 
-// sortedKeys returns the keys of m in deterministic (sorted) order, so packing
-// and layout export produce stable output regardless of Go map iteration order.
+// sortedKeys returns m's keys sorted, for deterministic output.
 func sortedKeys[V any](m map[string]V) []string {
 	keys := make([]string, 0, len(m))
 	for key := range m {

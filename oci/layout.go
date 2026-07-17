@@ -11,8 +11,7 @@ import (
 	"strings"
 )
 
-// File modes for OCI layout output: files are owner read/write, directories are
-// owner read/write/execute plus group read/execute.
+// File modes for OCI layout output.
 const (
 	layoutFileMode = 0o600
 	layoutDirMode  = 0o750

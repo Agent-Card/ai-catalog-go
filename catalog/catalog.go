@@ -16,13 +16,10 @@ import (
 	"strings"
 )
 
-// MediaTypeCatalog is the media type identifying a (possibly nested) AI Catalog
-// document. An entry whose Type equals this value embeds or references another
-// AI Catalog.
+// MediaTypeCatalog is the media type of a (possibly nested) AI Catalog document.
 const MediaTypeCatalog = "application/ai-catalog+json"
 
-// WellKnownPath is the spec's well-known URI path (RFC 8615) at which a host MAY
-// serve its AI Catalog to enable automated domain-level discovery.
+// WellKnownPath is the spec's well-known URI path (RFC 8615) for an AI Catalog.
 const WellKnownPath = "/.well-known/ai-catalog.json"
 
 // AICatalog is the top-level container for discovering heterogeneous AI
@@ -62,9 +59,8 @@ func (c AICatalog) MarshalJSON() ([]byte, error) {
 	return data, nil
 }
 
-// GetByID returns a pointer to the first entry whose Identifier exactly matches
-// id, and reports whether such an entry was found. The pointer references the
-// entry inside the catalog's Entries slice.
+// GetByID returns the first entry whose Identifier equals id, and reports
+// whether one was found.
 func (c *AICatalog) GetByID(id string) (*CatalogEntry, bool) {
 	for i := range c.Entries {
 		if c.Entries[i].Identifier == id {
@@ -75,9 +71,8 @@ func (c *AICatalog) GetByID(id string) (*CatalogEntry, bool) {
 	return nil, false
 }
 
-// GetByType returns all entries whose Type (media type) exactly matches
-// mediaType. The returned pointers reference entries inside the catalog's
-// Entries slice; the result is nil when there are no matches.
+// GetByType returns all entries whose Type equals mediaType, or nil when none
+// match.
 func (c *AICatalog) GetByType(mediaType string) []*CatalogEntry {
 	var results []*CatalogEntry
 
@@ -107,10 +102,9 @@ func (c *AICatalog) Search(query string) []*CatalogEntry {
 	return results
 }
 
-// SearchByRegex returns all entries where pattern matches the Identifier,
-// DisplayName, Description, or any Tags value. The pattern is used verbatim
-// (it is not made case-insensitive). It returns an error if pattern is not a
-// valid regular expression.
+// SearchByRegex returns all entries where pattern (used verbatim) matches the
+// Identifier, DisplayName, Description, or any Tags value. It errors on an
+// invalid pattern.
 func (c *AICatalog) SearchByRegex(pattern string) ([]*CatalogEntry, error) {
 	re, err := regexp.Compile(pattern)
 	if err != nil {

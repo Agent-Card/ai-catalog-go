@@ -9,10 +9,9 @@ const urnAIRPrefix = "urn:air:"
 
 const didWebPrefix = "did:web:"
 
-// PublisherDomain returns the lowercased publisher domain segment of a
-// urn:air:{publisher}:{namespace}:{name} identifier. The second result is false
-// for non-urn:air identifiers, for which the spec does not define a publisher
-// domain.
+// PublisherDomain returns the lowercased publisher segment of a
+// urn:air:{publisher}:{namespace}:{name} identifier. The result is false for
+// non-urn:air identifiers.
 func PublisherDomain(identifier string) (string, bool) {
 	if !strings.HasPrefix(strings.ToLower(identifier), urnAIRPrefix) {
 		return "", false
@@ -26,10 +25,9 @@ func PublisherDomain(identifier string) (string, bool) {
 	return strings.ToLower(publisher), true
 }
 
-// IdentityDomain returns the lowercased authority or trust domain of a Trust
-// Manifest identity URI, handling urn:air, did:web, and authority-based schemes
-// (spiffe://, https://, ...). The second result is false when no domain can be
-// determined.
+// IdentityDomain returns the lowercased domain of a trust-manifest identity,
+// handling urn:air, did:web, and authority-based schemes (spiffe://, https://,
+// ...). The result is false when no domain can be determined.
 func IdentityDomain(identity string) (string, bool) {
 	id := strings.TrimSpace(identity)
 	lower := strings.ToLower(id)
@@ -44,10 +42,9 @@ func IdentityDomain(identity string) (string, bool) {
 	}
 }
 
-// IdentityBindsToEntry reports whether a Trust Manifest identity's domain aligns
-// with the publisher domain of an entry identifier, per the spec's identity
-// binding. It returns (aligned, determinable); when determinable is false the
-// binding cannot be evaluated and aligned is reported as true.
+// IdentityBindsToEntry reports whether a trust-manifest identity's domain aligns
+// with an entry identifier's publisher domain. It returns (aligned,
+// determinable); when determinable is false, aligned is reported as true.
 func IdentityBindsToEntry(identifier, identity string) (bool, bool) {
 	publisher, pubOK := PublisherDomain(identifier)
 	domain, idOK := IdentityDomain(identity)

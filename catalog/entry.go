@@ -15,52 +15,35 @@ import (
 
 // CatalogEntry describes a single AI artifact: it identifies the artifact,
 // declares its kind via Type, and either references it (URL) or embeds it
-// inline (Data). When Version is set, (Identifier, Version) must be unique
-// within a catalog; otherwise Identifier alone must be unique.
+// inline (Data).
 //
-//nolint:revive // "catalog.CatalogEntry" matches the spec and the Rust SDK type name.
+//nolint:revive // "catalog.CatalogEntry" matches the spec type name.
 type CatalogEntry struct {
-	// Identifier is a stable, globally unique identifier, ideally a URN
-	// (RFC 8141) or URI.
+	// Identifier is a stable, globally unique identifier, ideally a URN or URI.
 	Identifier string `json:"identifier"`
 
-	// DisplayName is a human-readable name for the artifact.
 	DisplayName string `json:"displayName,omitempty"`
 
-	// Type is the media type of the artifact, e.g.
-	// "application/a2a-agent-card+json", "application/mcp-server-card+json",
-	// or "application/ai-catalog+json" for a nested catalog.
+	// Type is the media type of the artifact;
+	// "application/ai-catalog+json" denotes a nested catalog.
 	Type string `json:"type"`
 
-	// URL is where the artifact document can be retrieved. Exactly one of URL
-	// or Data must be set.
-	URL string `json:"url,omitempty"`
-
-	// Data is the artifact document embedded inline; its structure follows
-	// Type. Exactly one of URL or Data must be set.
+	// URL and Data are mutually exclusive: exactly one must be set.
+	URL  string          `json:"url,omitempty"`
 	Data json.RawMessage `json:"data,omitempty"`
 
-	// Version is the artifact version. Semantic Versioning is recommended.
-	Version string `json:"version,omitempty"`
+	Version     string   `json:"version,omitempty"`
+	Description string   `json:"description,omitempty"`
+	Tags        []string `json:"tags,omitempty"`
 
-	// Description of the artifact.
-	Description string `json:"description,omitempty"`
-
-	// Tags are free-form keywords for filtering and discovery.
-	Tags []string `json:"tags,omitempty"`
-
-	// Publisher is the publishing entity. Canonical location for publisher
-	// info, not duplicated in TrustManifest.
 	Publisher *Publisher `json:"publisher,omitempty"`
 
-	// TrustManifest holds trust metadata. When present, TrustManifest.Identity
-	// must match Identifier.
+	// TrustManifest.Identity must match Identifier when present.
 	TrustManifest *TrustManifest `json:"trustManifest,omitempty"`
 
-	// UpdatedAt is an RFC 3339 timestamp of the last modification to this entry.
+	// UpdatedAt is an RFC 3339 timestamp of the last modification.
 	UpdatedAt string `json:"updatedAt,omitempty"`
 
-	// Metadata holds custom or vendor-specific metadata.
 	Metadata map[string]json.RawMessage `json:"metadata,omitempty"`
 }
 
@@ -70,13 +53,8 @@ func (e *CatalogEntry) IsNestedCatalog() bool {
 	return e.Type == MediaTypeCatalog
 }
 
-// ResolveDisplayName returns a human-readable name for the entry, following the
-// spec's display-name resolution order for the steps that do not require
-// fetching the referenced artifact: the entry's DisplayName when set, otherwise
-// the trailing segment of Identifier (the portion after its final ':' or '/';
-// e.g. "urn:air:example.com:mcp:weather" yields "weather"). A consumer that has
-// already fetched or cached the artifact should prefer the artifact's own
-// canonical name (spec step 2) over this identifier fallback.
+// ResolveDisplayName returns the entry's DisplayName when set, otherwise the
+// trailing segment of Identifier (the portion after its final ':' or '/').
 func (e *CatalogEntry) ResolveDisplayName() string {
 	if e.DisplayName != "" {
 		return e.DisplayName

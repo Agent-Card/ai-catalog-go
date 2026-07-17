@@ -12,19 +12,11 @@ import (
 // requested identifier exists in the (resolved) catalog.
 var ErrEntryNotFound = errors.New("catalog entry not found")
 
-// Source is a read-only, source-agnostic handle to an AI Catalog. An
-// implementation is backed by some source — a local file, a well-known HTTP
-// endpoint, a registry, a Directory instance, etc. — and exposes lookup and
-// search operations that transparently descend into nested catalogs.
-//
-// The provider package ships built-in implementations (JSON, Web, and
-// FromCatalog). Consumers with their own backend (for example a service that
-// assembles a catalog from an internal database) can satisfy this interface
-// directly; the methods take a context.Context so such implementations can
-// perform I/O and honour cancellation.
-//
-// AICatalog is the concrete, in-memory document; Source is the abstraction
-// used to query one regardless of where it lives.
+// Source is a read-only, source-agnostic handle to an AI Catalog whose lookups
+// descend into nested catalogs. The provider package ships built-in
+// implementations (JSON, Web, FromCatalog); consumers with their own backend
+// can satisfy it directly. Methods take a context.Context for I/O and
+// cancellation.
 type Source interface {
 	// Document returns the top-level AI Catalog document backing this handle.
 	Document(ctx context.Context) (*AICatalog, error)

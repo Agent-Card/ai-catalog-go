@@ -169,8 +169,7 @@ func CanonicalizeTrustManifest(manifest *catalog.TrustManifest) (string, error) 
 		return "", fmt.Errorf("marshal trust manifest: %w", err)
 	}
 
-	// Decode with UseNumber so integer metadata values keep their exact
-	// representation through the round-trip.
+	// UseNumber preserves exact integer metadata values across the round-trip.
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.UseNumber()
 
@@ -183,8 +182,7 @@ func CanonicalizeTrustManifest(manifest *catalog.TrustManifest) (string, error) 
 		delete(object, "signature")
 	}
 
-	// encoding/json marshals map keys in sorted order at every level, which
-	// yields the required canonical (JCS-style) key ordering.
+	// encoding/json sorts map keys at every level, yielding JCS-style ordering.
 	canonical, err := json.Marshal(value)
 	if err != nil {
 		return "", fmt.Errorf("marshal canonical trust manifest: %w", err)
