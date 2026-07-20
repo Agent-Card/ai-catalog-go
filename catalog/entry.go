@@ -4,12 +4,7 @@
 package catalog
 
 import (
-	"context"
 	"encoding/json"
-	"errors"
-	"fmt"
-	"io"
-	"net/http"
 	"strings"
 )
 
@@ -47,8 +42,7 @@ type CatalogEntry struct {
 	Metadata map[string]json.RawMessage `json:"metadata,omitempty"`
 }
 
-// IsNestedCatalog reports whether the entry references or embeds another AI
-// Catalog (i.e. its Type is "application/ai-catalog+json").
+// IsNestedCatalog reports whether the entry's Type marks it as a nested catalog.
 func (e *CatalogEntry) IsNestedCatalog() bool {
 	return e.Type == MediaTypeCatalog
 }
@@ -65,35 +59,4 @@ func (e *CatalogEntry) ResolveDisplayName() string {
 	}
 
 	return e.Identifier
-}
-
-// Pull fetches the artifact at the entry's URL and returns its raw bytes.
-// It returns an error if the entry has no URL (e.g. it embeds inline Data).
-func (e *CatalogEntry) Pull(ctx context.Context) ([]byte, error) {
-	if e.URL == "" {
-		return nil, errors.New("entry has no url to pull from")
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, e.URL, nil)
-	if err != nil {
-		return nil, fmt.Errorf("create request: %w", err)
-	}
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("fetch artifact: %w", err)
-	}
-
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
-	}
-
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read response body: %w", err)
-	}
-
-	return data, nil
 }

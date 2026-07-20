@@ -22,9 +22,8 @@ const MediaTypeCatalog = "application/ai-catalog+json"
 // WellKnownPath is the spec's well-known URI path (RFC 8615) for an AI Catalog.
 const WellKnownPath = "/.well-known/ai-catalog.json"
 
-// AICatalog is the top-level container for discovering heterogeneous AI
-// artifacts (MCP servers, A2A agents, skills, nested catalogs, etc.).
-// It is serialized as media type "application/ai-catalog+json".
+// AICatalog is the top-level AI Catalog document (media type
+// "application/ai-catalog+json").
 type AICatalog struct {
 	// SpecVersion is the AI Catalog spec version this document conforms to,
 	// as "Major.Minor".
@@ -78,6 +77,34 @@ func (c *AICatalog) GetByType(mediaType string) []*CatalogEntry {
 
 	for i := range c.Entries {
 		if c.Entries[i].Type == mediaType {
+			results = append(results, &c.Entries[i])
+		}
+	}
+
+	return results
+}
+
+// GetByTag returns all entries carrying tag (exact match), or nil when none
+// match.
+func (c *AICatalog) GetByTag(tag string) []*CatalogEntry {
+	var results []*CatalogEntry
+
+	for i := range c.Entries {
+		if slices.Contains(c.Entries[i].Tags, tag) {
+			results = append(results, &c.Entries[i])
+		}
+	}
+
+	return results
+}
+
+// GetByPublisher returns all entries whose Publisher.Identifier equals id, or
+// nil when none match.
+func (c *AICatalog) GetByPublisher(id string) []*CatalogEntry {
+	var results []*CatalogEntry
+
+	for i := range c.Entries {
+		if p := c.Entries[i].Publisher; p != nil && p.Identifier == id {
 			results = append(results, &c.Entries[i])
 		}
 	}

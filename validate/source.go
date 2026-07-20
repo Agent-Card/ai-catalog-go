@@ -14,7 +14,7 @@ import (
 // bridge for callers holding a catalog.Source handle (the catalog package
 // cannot depend on validate without creating an import cycle).
 func Source(ctx context.Context, c catalog.Source) (Result, error) {
-	doc, err := c.Document(ctx)
+	doc, err := c.Load(ctx)
 	if err != nil {
 		return Result{}, fmt.Errorf("load catalog: %w", err)
 	}

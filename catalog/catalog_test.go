@@ -4,10 +4,7 @@
 package catalog
 
 import (
-	"context"
 	"encoding/json"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -276,6 +273,50 @@ func TestGetByType_ReturnsPointerIntoSlice(t *testing.T) {
 	}
 }
 
+func TestGetByTag(t *testing.T) {
+	c := validCatalog(t)
+
+	finance := c.GetByTag("finance")
+	if len(finance) != 1 || finance[0].Identifier != financeID {
+		t.Errorf("GetByTag(finance) = %+v", finance)
+	}
+
+	if got := c.GetByTag("dataset"); len(got) != 1 || got[0].Identifier != nlpID {
+		t.Errorf("GetByTag(dataset) = %+v", got)
+	}
+
+	if got := c.GetByTag("does-not-exist"); got != nil {
+		t.Errorf("GetByTag(unknown) = %+v, want nil", got)
+	}
+}
+
+func TestGetByPublisher(t *testing.T) {
+	c, err := ParseString(`{
+		"specVersion": "1.0",
+		"entries": [
+			{"identifier": "urn:a", "type": "application/gguf", "url": "https://x/a",
+				"publisher": {"identifier": "did:example:acme", "displayName": "Acme"}},
+			{"identifier": "urn:b", "type": "application/gguf", "url": "https://x/b",
+				"publisher": {"identifier": "did:example:acme", "displayName": "Acme"}},
+			{"identifier": "urn:c", "type": "application/gguf", "url": "https://x/c",
+				"publisher": {"identifier": "did:example:other", "displayName": "Other"}},
+			{"identifier": "urn:d", "type": "application/gguf", "url": "https://x/d"}
+		]
+	}`)
+	if err != nil {
+		t.Fatalf("parse fixture: %v", err)
+	}
+
+	acme := c.GetByPublisher("did:example:acme")
+	if len(acme) != 2 || acme[0].Identifier != "urn:a" || acme[1].Identifier != "urn:b" {
+		t.Errorf("GetByPublisher(acme) = %+v", acme)
+	}
+
+	if got := c.GetByPublisher("did:example:missing"); got != nil {
+		t.Errorf("GetByPublisher(unknown) = %+v, want nil", got)
+	}
+}
+
 const versionedID = "urn:air:acme.com:agent:finance"
 
 func versionedCatalog(t *testing.T) *AICatalog {
@@ -450,46 +491,5 @@ func TestIsNestedCatalog(t *testing.T) {
 	leaf := &CatalogEntry{Type: "application/json"}
 	if leaf.IsNestedCatalog() {
 		t.Error("expected IsNestedCatalog to be false")
-	}
-}
-
-func TestPull_Success(t *testing.T) {
-	artifact := []byte(`{"name":"my-agent"}`)
-
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write(artifact)
-	}))
-	defer srv.Close()
-
-	e := &CatalogEntry{Identifier: "test", Type: "application/json", URL: srv.URL}
-
-	data, err := e.Pull(context.Background())
-	if err != nil {
-		t.Fatalf("Pull error: %v", err)
-	}
-
-	if string(data) != string(artifact) {
-		t.Errorf("Pull data = %q, want %q", data, artifact)
-	}
-}
-
-func TestPull_NoURL(t *testing.T) {
-	e := &CatalogEntry{Identifier: "test", Type: MediaTypeCatalog, Data: json.RawMessage(`{}`)}
-
-	if _, err := e.Pull(context.Background()); err == nil {
-		t.Fatal("expected error when pulling an entry with no url")
-	}
-}
-
-func TestPull_Non200(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		http.Error(w, "gone", http.StatusGone)
-	}))
-	defer srv.Close()
-
-	e := &CatalogEntry{Identifier: "test", Type: "application/json", URL: srv.URL}
-
-	if _, err := e.Pull(context.Background()); err == nil {
-		t.Fatal("expected error for non-200 response, got nil")
 	}
 }

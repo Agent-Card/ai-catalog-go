@@ -21,7 +21,7 @@ The minimum Go version is declared in [`go.mod`](./go.mod).
 
 ### Load a catalog
 
-The `provider` package loads a document and returns a `catalog.Source` — a read-only handle that transparently descends into nested catalogs.
+The `provider` package returns a `catalog.Source` — a loader for an AI Catalog. Each built-in loads the document as-is (nested catalog entries are left unresolved for the caller to follow as needed).
 
 ```go
 import (
@@ -33,47 +33,45 @@ import (
 ctx := context.Background()
 
 // From a local file:
-src, err := provider.JSON(ctx, "ai-catalog.json")
+src, err := provider.JSON("ai-catalog.json")
 
 // From an explicit URL:
 src, err = provider.Web(ctx, "https://acme-corp.com/catalogs/finance.json")
 
 // From a domain's well-known URI (https://acme-corp.com/.well-known/ai-catalog.json):
 src, err = provider.WellKnown(ctx, "acme-corp.com")
+
+// From an already-parsed document:
+src, err = provider.FromCatalog(doc)
 ```
 
-Nested catalogs (inline or URL-referenced) are resolved up to `provider.DefaultMaxDepth` (4). Tune loading with options:
-
-```go
-src, err := provider.WellKnown(ctx, "acme-corp.com",
-	provider.WithHTTPClient(myClient), // custom *http.Client
-	provider.WithMaxDepth(2),          // shallower resolution
-)
-```
+`Web` and `WellKnown` retrieve documents over HTTP; supply a custom client with `provider.WithHTTPClient(myClient)` or an entirely custom transport with `provider.WithFetcher(...)`.
 
 ### Query entries
 
-`Source` operations take a `context.Context` and search across resolved nested catalogs:
+`Source` has a single method, `Load`, which returns the whole catalog in memory as a `*catalog.AICatalog`. Query it with the document's methods — which cover the resolved nested entries folded in by the loader:
 
 ```go
-entry, err := src.GetByID(ctx, "urn:air:acme-corp.com:mcp:weather")
-if errors.Is(err, catalog.ErrEntryNotFound) {
-	// no such entry
+doc, err := src.Load(ctx)
+if err != nil {
+	// handle load error
 }
 
-mcpServers, err := src.GetByType(ctx, "application/mcp-server-card+json")
-hits, err := src.Search(ctx, "weather")
+entry, ok := doc.GetByID("urn:air:acme-corp.com:mcp:weather")
+mcpServers := doc.GetByType("application/mcp-server-card+json")
+hits := doc.Search("weather")
+matched, err := doc.SearchByRegex(`^urn:air:acme-corp\.com:`)
 ```
 
-If you already hold a parsed `*catalog.AICatalog`, the same lookups (plus regex search) are available directly on the document, single-document and without a context:
+The same methods are available on any parsed document, so a `Source` is not required:
 
 ```go
 doc, _ := catalog.ParseFile("ai-catalog.json")
 
 entry, ok := doc.GetByID("urn:air:acme-corp.com:mcp:weather")
 agents := doc.GetByType("application/a2a-agent-card+json")
-hits := doc.Search("weather")
-matched, err := doc.SearchByRegex(`^urn:air:acme-corp\.com:`)
+byTag := doc.GetByTag("finance")
+byPublisher := doc.GetByPublisher("did:web:acme-corp.com")
 ```
 
 ### Multiple versions of an artifact

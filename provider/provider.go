@@ -3,8 +3,9 @@
 
 // Package provider offers built-in ways to obtain a catalog.Source from a
 // concrete source — a local JSON file (JSON), a remote/well-known HTTP endpoint
-// (Web), or an already-parsed document (FromCatalog). Each loader resolves
-// nested catalogs (inline and URL-referenced) up to a bounded depth.
+// (Web, WellKnown), or an already-parsed document (FromCatalog). Each returns
+// the document as-is; nested catalog entries are left unresolved for the caller
+// to follow as needed.
 package provider
 
 import (
@@ -18,15 +19,11 @@ import (
 	"github.com/agntcy/ai-catalog-go-sdk/catalog"
 )
 
-// DefaultMaxDepth is the default nested-catalog resolution depth.
-const DefaultMaxDepth = 4
-
 // maxResponseBytes caps a document read by the default Fetcher.
 const maxResponseBytes = 10 << 20 // 10 MiB
 
 // Fetcher retrieves the raw bytes of a document at url, abstracting the
-// transport so callers can plug in custom clients, auth, caching, or offline
-// resolvers.
+// transport so callers can plug in custom clients, auth, or caching.
 type Fetcher interface {
 	Fetch(ctx context.Context, url string) ([]byte, error)
 }
@@ -35,12 +32,10 @@ type Fetcher interface {
 type Option func(*config)
 
 type config struct {
-	fetcher  Fetcher
-	maxDepth int
+	fetcher Fetcher
 }
 
-// WithFetcher sets the Fetcher used to resolve URL-referenced nested catalogs
-// (and, for Web, the root document).
+// WithFetcher sets the Fetcher used by Web and WellKnown to retrieve documents.
 func WithFetcher(f Fetcher) Option {
 	return func(c *config) {
 		if f != nil {
@@ -55,21 +50,8 @@ func WithHTTPClient(client *http.Client) Option {
 	return WithFetcher(&httpFetcher{client: client})
 }
 
-// WithMaxDepth sets the maximum nesting depth to which nested catalogs are
-// resolved. Values below 1 are ignored.
-func WithMaxDepth(depth int) Option {
-	return func(c *config) {
-		if depth >= 1 {
-			c.maxDepth = depth
-		}
-	}
-}
-
 func newConfig(opts ...Option) config {
-	cfg := config{
-		fetcher:  &httpFetcher{},
-		maxDepth: DefaultMaxDepth,
-	}
+	cfg := config{fetcher: &httpFetcher{}}
 
 	for _, opt := range opts {
 		opt(&cfg)
@@ -113,39 +95,35 @@ func (h *httpFetcher) Fetch(ctx context.Context, url string) ([]byte, error) {
 	return data, nil
 }
 
-// resolvedSource is a catalog.Source backed by a tree fully resolved at
-// construction time. It is read-only and safe for concurrent use.
+// resolvedSource is a catalog.Source backed by an already-loaded document. It is
+// read-only and safe for concurrent use.
 type resolvedSource struct {
-	root     *catalog.AICatalog
-	catalogs []*catalog.AICatalog // root first, then every resolved nested catalog
+	doc *catalog.AICatalog
 }
 
 var _ catalog.Source = (*resolvedSource)(nil)
 
-// FromCatalog wraps an already-parsed AI Catalog as a catalog.Source, resolving
-// nested catalogs (inline and URL-referenced) up to the configured depth.
-func FromCatalog(ctx context.Context, c *catalog.AICatalog, opts ...Option) (catalog.Source, error) {
+// FromCatalog wraps an already-parsed AI Catalog as a catalog.Source.
+func FromCatalog(c *catalog.AICatalog) (catalog.Source, error) {
 	if c == nil {
 		return nil, errors.New("catalog is nil")
 	}
 
-	return build(ctx, c, "", newConfig(opts...))
+	return &resolvedSource{doc: c}, nil
 }
 
-// JSON creates a catalog.Source from a local AI Catalog JSON file, resolving
-// URL-referenced nested catalogs via the configured Fetcher (HTTP by default).
-func JSON(ctx context.Context, path string, opts ...Option) (catalog.Source, error) {
+// JSON creates a catalog.Source from a local AI Catalog JSON file.
+func JSON(path string) (catalog.Source, error) {
 	c, err := catalog.ParseFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("load catalog: %w", err)
 	}
 
-	return build(ctx, c, "file://"+path, newConfig(opts...))
+	return &resolvedSource{doc: c}, nil
 }
 
-// Web creates a catalog.Source from an AI Catalog served at url. The root
-// document and any URL-referenced nested catalogs are retrieved via the
-// configured Fetcher.
+// Web creates a catalog.Source from an AI Catalog served at url, retrieved via
+// the configured Fetcher (HTTP by default).
 func Web(ctx context.Context, url string, opts ...Option) (catalog.Source, error) {
 	cfg := newConfig(opts...)
 
@@ -159,12 +137,12 @@ func Web(ctx context.Context, url string, opts ...Option) (catalog.Source, error
 		return nil, fmt.Errorf("parse catalog: %w", err)
 	}
 
-	return build(ctx, c, url, cfg)
+	return &resolvedSource{doc: c}, nil
 }
 
 // WellKnown creates a catalog.Source from the AI Catalog served at
 // "https://{domain}/.well-known/ai-catalog.json". domain is a bare host (any
-// leading scheme and trailing slash are trimmed); resolution behaves as Web.
+// leading scheme and trailing slash are trimmed); retrieval behaves as Web.
 func WellKnown(ctx context.Context, domain string, opts ...Option) (catalog.Source, error) {
 	host := strings.TrimSpace(domain)
 	host = strings.TrimPrefix(host, "https://")
@@ -178,154 +156,10 @@ func WellKnown(ctx context.Context, domain string, opts ...Option) (catalog.Sour
 	return Web(ctx, "https://"+host+catalog.WellKnownPath, opts...)
 }
 
-// build resolves the tree rooted at root into a catalog.Source. rootKey seeds
-// cycle detection and may be empty.
-func build(ctx context.Context, root *catalog.AICatalog, rootKey string, cfg config) (catalog.Source, error) {
-	r := &resolver{
-		fetcher:  cfg.fetcher,
-		maxDepth: cfg.maxDepth,
-		visited:  make(map[string]bool),
-	}
-	if rootKey != "" {
-		r.visited[rootKey] = true
-	}
-
-	if err := r.walk(ctx, root, 0); err != nil {
-		return nil, err
-	}
-
-	return &resolvedSource{root: root, catalogs: r.catalogs}, nil
-}
-
-// resolver performs a depth-limited, cycle-safe traversal collecting every
-// reachable catalog. Nested catalogs that cannot be fetched or parsed are
-// skipped; only context cancellation aborts the traversal.
-type resolver struct {
-	fetcher  Fetcher
-	maxDepth int
-	visited  map[string]bool
-	catalogs []*catalog.AICatalog
-}
-
-func (r *resolver) walk(ctx context.Context, c *catalog.AICatalog, depth int) error {
+func (p *resolvedSource) Load(ctx context.Context) (*catalog.AICatalog, error) {
 	if err := ctx.Err(); err != nil {
-		return fmt.Errorf("resolve catalog: %w", err)
+		return nil, fmt.Errorf("load catalog: %w", err)
 	}
 
-	r.catalogs = append(r.catalogs, c)
-
-	if depth >= r.maxDepth {
-		return nil
-	}
-
-	for i := range c.Entries {
-		entry := &c.Entries[i]
-		if !entry.IsNestedCatalog() {
-			continue
-		}
-
-		nested := r.resolveNested(ctx, entry)
-		if nested == nil {
-			continue
-		}
-
-		if err := r.walk(ctx, nested, depth+1); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-// resolveNested returns the nested catalog referenced by entry, or nil if it is
-// absent, already visited, or cannot be fetched/parsed.
-func (r *resolver) resolveNested(ctx context.Context, entry *catalog.CatalogEntry) *catalog.AICatalog {
-	switch {
-	case entry.URL != "":
-		if r.visited[entry.URL] {
-			return nil
-		}
-
-		r.visited[entry.URL] = true
-
-		data, err := r.fetcher.Fetch(ctx, entry.URL)
-		if err != nil {
-			return nil
-		}
-
-		nested, err := catalog.Parse(data)
-		if err != nil {
-			return nil
-		}
-
-		return nested
-
-	case len(entry.Data) > 0:
-		key := "inline:" + entry.Identifier
-		if r.visited[key] {
-			return nil
-		}
-
-		r.visited[key] = true
-
-		nested, err := catalog.Parse(entry.Data)
-		if err != nil {
-			return nil
-		}
-
-		return nested
-
-	default:
-		return nil
-	}
-}
-
-func (p *resolvedSource) Document(ctx context.Context) (*catalog.AICatalog, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, fmt.Errorf("document: %w", err)
-	}
-
-	return p.root, nil
-}
-
-func (p *resolvedSource) GetByID(ctx context.Context, id string) (*catalog.CatalogEntry, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, fmt.Errorf("get by id: %w", err)
-	}
-
-	for _, c := range p.catalogs {
-		if entry, ok := c.GetByID(id); ok {
-			return entry, nil
-		}
-	}
-
-	return nil, fmt.Errorf("%w: %q", catalog.ErrEntryNotFound, id)
-}
-
-func (p *resolvedSource) GetByType(ctx context.Context, mediaType string) ([]*catalog.CatalogEntry, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, fmt.Errorf("get by type: %w", err)
-	}
-
-	var results []*catalog.CatalogEntry
-
-	for _, c := range p.catalogs {
-		results = append(results, c.GetByType(mediaType)...)
-	}
-
-	return results, nil
-}
-
-func (p *resolvedSource) Search(ctx context.Context, query string) ([]*catalog.CatalogEntry, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, fmt.Errorf("search: %w", err)
-	}
-
-	var results []*catalog.CatalogEntry
-
-	for _, c := range p.catalogs {
-		results = append(results, c.Search(query)...)
-	}
-
-	return results, nil
+	return p.doc, nil
 }
