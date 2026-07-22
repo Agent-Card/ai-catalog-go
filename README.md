@@ -38,14 +38,13 @@ src, err := provider.JSON("ai-catalog.json")
 // From an explicit URL:
 src, err = provider.Web(ctx, "https://acme-corp.com/catalogs/finance.json")
 
-// From a domain's well-known URI (https://acme-corp.com/.well-known/ai-catalog.json):
-src, err = provider.WellKnown(ctx, "acme-corp.com")
-
-// From an already-parsed document:
-src, err = provider.FromCatalog(doc)
+// From a domain's well-known URI (RFC 8615):
+src, err = provider.Web(ctx, "https://acme-corp.com"+catalog.WellKnownPath)
 ```
 
-`Web` and `WellKnown` retrieve documents over HTTP; supply a custom client with `provider.WithHTTPClient(myClient)` or an entirely custom transport with `provider.WithFetcher(...)`.
+`Web` retrieves documents over HTTP; supply a custom client with `provider.WithHTTPClient(myClient)` or an entirely custom transport with `provider.WithFetcher(...)`.
+
+If you already hold a parsed `*catalog.AICatalog`, you don't need a `Source` — call its methods directly (see below).
 
 ### Query entries
 

@@ -63,33 +63,6 @@ func loadDoc(t *testing.T, c catalog.Source) *catalog.AICatalog {
 	return doc
 }
 
-func TestFromCatalog(t *testing.T) {
-	root, err := catalog.Parse(rootCatalog())
-	if err != nil {
-		t.Fatalf("parse root: %v", err)
-	}
-
-	c, err := FromCatalog(root)
-	if err != nil {
-		t.Fatalf("FromCatalog: %v", err)
-	}
-
-	doc := loadDoc(t, c)
-	if len(doc.Entries) != 2 {
-		t.Fatalf("expected 2 entries, got %d", len(doc.Entries))
-	}
-
-	if _, ok := doc.GetByID(leafAID); !ok {
-		t.Fatalf("expected to find %q", leafAID)
-	}
-}
-
-func TestFromCatalog_NilCatalog(t *testing.T) {
-	if _, err := FromCatalog(nil); err == nil {
-		t.Fatal("expected error for nil catalog")
-	}
-}
-
 func TestJSON(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "catalog.json")
@@ -133,29 +106,6 @@ func TestWeb_LoadsViaFetcher(t *testing.T) {
 	}
 }
 
-func TestWellKnown(t *testing.T) {
-	const domain = "acme-corp.com"
-
-	url := "https://" + domain + catalog.WellKnownPath
-
-	for _, input := range []string{domain, "https://" + domain, domain + "/"} {
-		fetcher := &stubFetcher{docs: map[string][]byte{url: rootCatalog()}}
-
-		c, err := WellKnown(context.Background(), input, WithFetcher(fetcher))
-		if err != nil {
-			t.Fatalf("WellKnown(%q): %v", input, err)
-		}
-
-		if _, ok := loadDoc(t, c).GetByID(leafAID); !ok {
-			t.Fatalf("WellKnown(%q): expected to find %q", input, leafAID)
-		}
-	}
-
-	if _, err := WellKnown(context.Background(), "   "); err == nil {
-		t.Fatal("WellKnown(empty domain): expected error")
-	}
-}
-
 func TestWeb_ContextCancellation(t *testing.T) {
 	const url = "https://host.example/catalog.json"
 
@@ -170,14 +120,16 @@ func TestWeb_ContextCancellation(t *testing.T) {
 }
 
 func TestLoad_ContextCancellation(t *testing.T) {
-	root, err := catalog.Parse(rootCatalog())
-	if err != nil {
-		t.Fatalf("parse root: %v", err)
+	dir := t.TempDir()
+	path := filepath.Join(dir, "catalog.json")
+
+	if err := os.WriteFile(path, rootCatalog(), 0o600); err != nil {
+		t.Fatalf("write temp catalog: %v", err)
 	}
 
-	c, err := FromCatalog(root)
+	c, err := JSON(path)
 	if err != nil {
-		t.Fatalf("FromCatalog: %v", err)
+		t.Fatalf("JSON: %v", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())

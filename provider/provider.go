@@ -2,25 +2,31 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package provider offers built-in ways to obtain a catalog.Source from a
-// concrete source — a local JSON file (JSON), a remote/well-known HTTP endpoint
-// (Web, WellKnown), or an already-parsed document (FromCatalog). Each returns
-// the document as-is; nested catalog entries are left unresolved for the caller
-// to follow as needed.
+// concrete source — a local JSON file (JSON) or an HTTP endpoint (Web). Each
+// returns the document as-is; nested catalog entries are left unresolved for the
+// caller to follow as needed.
 package provider
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
+	"time"
 
 	"github.com/agntcy/ai-catalog-go-sdk/catalog"
 )
 
 // maxResponseBytes caps a document read by the default Fetcher.
 const maxResponseBytes = 10 << 20 // 10 MiB
+
+// defaultHTTPTimeout bounds a fetch by the default client, so a slow or
+// unresponsive server cannot stall the caller indefinitely.
+const defaultHTTPTimeout = 60 * time.Second
+
+// defaultHTTPClient is used when no *http.Client is configured. Unlike
+// http.DefaultClient it sets a timeout.
+var defaultHTTPClient = &http.Client{Timeout: defaultHTTPTimeout}
 
 // Fetcher retrieves the raw bytes of a document at url, abstracting the
 // transport so callers can plug in custom clients, auth, or caching.
@@ -35,7 +41,7 @@ type config struct {
 	fetcher Fetcher
 }
 
-// WithFetcher sets the Fetcher used by Web and WellKnown to retrieve documents.
+// WithFetcher sets the Fetcher used by Web to retrieve documents.
 func WithFetcher(f Fetcher) Option {
 	return func(c *config) {
 		if f != nil {
@@ -68,7 +74,7 @@ type httpFetcher struct {
 func (h *httpFetcher) Fetch(ctx context.Context, url string) ([]byte, error) {
 	client := h.client
 	if client == nil {
-		client = http.DefaultClient
+		client = defaultHTTPClient
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -103,15 +109,6 @@ type resolvedSource struct {
 
 var _ catalog.Source = (*resolvedSource)(nil)
 
-// FromCatalog wraps an already-parsed AI Catalog as a catalog.Source.
-func FromCatalog(c *catalog.AICatalog) (catalog.Source, error) {
-	if c == nil {
-		return nil, errors.New("catalog is nil")
-	}
-
-	return &resolvedSource{doc: c}, nil
-}
-
 // JSON creates a catalog.Source from a local AI Catalog JSON file.
 func JSON(path string) (catalog.Source, error) {
 	c, err := catalog.ParseFile(path)
@@ -138,22 +135,6 @@ func Web(ctx context.Context, url string, opts ...Option) (catalog.Source, error
 	}
 
 	return &resolvedSource{doc: c}, nil
-}
-
-// WellKnown creates a catalog.Source from the AI Catalog served at
-// "https://{domain}/.well-known/ai-catalog.json". domain is a bare host (any
-// leading scheme and trailing slash are trimmed); retrieval behaves as Web.
-func WellKnown(ctx context.Context, domain string, opts ...Option) (catalog.Source, error) {
-	host := strings.TrimSpace(domain)
-	host = strings.TrimPrefix(host, "https://")
-	host = strings.TrimPrefix(host, "http://")
-	host = strings.TrimSuffix(host, "/")
-
-	if host == "" {
-		return nil, errors.New("domain is empty")
-	}
-
-	return Web(ctx, "https://"+host+catalog.WellKnownPath, opts...)
 }
 
 func (p *resolvedSource) Load(ctx context.Context) (*catalog.AICatalog, error) {

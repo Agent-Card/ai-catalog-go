@@ -91,7 +91,7 @@ func semverKey(version string) (string, bool) {
 		return "", false
 	}
 
-	key := "v" + strings.TrimPrefix(strings.TrimPrefix(version, "v"), "V")
+	key := "v" + strings.TrimLeft(version, "vV")
 	if !semver.IsValid(key) {
 		return "", false
 	}
