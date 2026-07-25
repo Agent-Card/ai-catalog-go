@@ -1,0 +1,8 @@
+{
+  "specVersion": "1.0",
+  "entries": [
+    {"identifier": "urn:example:artifact", "displayName": "Artifact",
+     "type": "application/json", "url": "https://example.com/artifact.json",
+     "trustManifest": {"identity": "plain-identifier"}}
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "specVersion": "1.0",
+  "host": {
+    "displayName": "Example Host",
+    "identifier": "did:web:example.com",
+    "trustManifest": {
+      "identity": "did:web:other.example.com",
+      "signature": "not-a-detached-jws"
+    }
+  },
+  "entries": [
+    {"identifier": "urn:air:acme.com:agent:artifact", "displayName": "Artifact",
+     "type": "application/json", "url": "https://example.com/artifact.json",
+     "trustManifest": {
+       "identity": "did:web:evil.example",
+       "signature": "header.payload.signature",
+       "trustSchema": {"identifier": "", "version": ""},
+       "attestations": [
+         {"type": "", "uri": "", "digest": "md5:abcd"}
+       ],
+       "provenance": [
+         {"relation": "", "sourceId": "", "sourceDigest": "sha256:not-hex!"}
+       ]
+     }}
+  ]
+}

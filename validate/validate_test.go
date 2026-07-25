@@ -8,9 +8,24 @@ import (
 	"testing"
 
 	"github.com/agntcy/ai-catalog-go-sdk/catalog"
+	"github.com/agntcy/ai-catalog-go-sdk/internal/fixture"
 	"github.com/agntcy/ai-catalog-go-sdk/validate"
 )
 
+// parse parses one of the shared fixture documents.
+func parse(t *testing.T, data []byte) *catalog.AICatalog {
+	t.Helper()
+
+	c, err := catalog.Parse(data)
+	if err != nil {
+		t.Fatalf("parse fixture: %v", err)
+	}
+
+	return c
+}
+
+// mustParse parses a JSON document supplied inline, for the few tests that
+// generate their input programmatically.
 func mustParse(t *testing.T, doc string) *catalog.AICatalog {
 	t.Helper()
 
@@ -43,13 +58,7 @@ func hasWarning(result validate.Result, substr string) bool {
 }
 
 func TestValidate_HostlessIsMinimal(t *testing.T) {
-	result := validate.Validate(mustParse(t, `{
-		"specVersion": "1.0",
-		"entries": [
-			{"identifier": "urn:example:minimal", "displayName": "Minimal",
-			 "type": "application/json", "url": "https://example.com/minimal.json"}
-		]
-	}`))
+	result := validate.Validate(parse(t, fixture.MinimalJSON))
 
 	if !result.IsValid {
 		t.Fatalf("expected valid, errors: %+v", result.Errors)
@@ -61,14 +70,7 @@ func TestValidate_HostlessIsMinimal(t *testing.T) {
 }
 
 func TestValidate_HostIsDiscoverable(t *testing.T) {
-	result := validate.Validate(mustParse(t, `{
-		"specVersion": "1.0",
-		"host": {"displayName": "Example Host"},
-		"entries": [
-			{"identifier": "urn:example:agent", "displayName": "Agent",
-			 "type": "application/json", "url": "https://example.com/agent.json"}
-		]
-	}`))
+	result := validate.Validate(parse(t, fixture.DiscoverableJSON))
 
 	if !result.IsValid {
 		t.Fatalf("expected valid, errors: %+v", result.Errors)
@@ -80,15 +82,8 @@ func TestValidate_HostIsDiscoverable(t *testing.T) {
 }
 
 func TestValidate_TrustManifestIsTrusted(t *testing.T) {
-	result := validate.Validate(mustParse(t, `{
-		"specVersion": "1.0",
-		"host": {"displayName": "Example Host"},
-		"entries": [
-			{"identifier": "urn:example:trusted", "displayName": "Trusted",
-			 "type": "application/json", "url": "https://example.com/trusted.json",
-			 "trustManifest": {"identity": "urn:example:trusted"}}
-		]
-	}`))
+	// The comprehensive fixture carries a trust manifest, so it is Trusted.
+	result := validate.Validate(parse(t, fixture.CatalogJSON))
 
 	if !result.IsValid {
 		t.Fatalf("expected valid, errors: %+v", result.Errors)
@@ -100,14 +95,7 @@ func TestValidate_TrustManifestIsTrusted(t *testing.T) {
 }
 
 func TestValidate_RejectsBothURLAndData(t *testing.T) {
-	result := validate.Validate(mustParse(t, `{
-		"specVersion": "1.0",
-		"entries": [
-			{"identifier": "urn:example:test", "displayName": "Test",
-			 "type": "application/json", "url": "https://example.com/test.json",
-			 "data": {"key": "value"}}
-		]
-	}`))
+	result := validate.Validate(parse(t, fixture.InvalidJSON))
 
 	if result.IsValid || !hasError(result, "exactly one of 'url' or 'data'") {
 		t.Errorf("expected url/data error, got: %+v", result.Errors)
@@ -115,13 +103,7 @@ func TestValidate_RejectsBothURLAndData(t *testing.T) {
 }
 
 func TestValidate_RejectsMissingPayload(t *testing.T) {
-	result := validate.Validate(mustParse(t, `{
-		"specVersion": "1.0",
-		"entries": [
-			{"identifier": "urn:example:missing", "displayName": "Missing",
-			 "type": "application/json"}
-		]
-	}`))
+	result := validate.Validate(parse(t, fixture.InvalidJSON))
 
 	if result.IsValid || !hasError(result, "entry must have exactly one of 'url' or 'data'") {
 		t.Errorf("expected missing payload error, got: %+v", result.Errors)
@@ -129,15 +111,7 @@ func TestValidate_RejectsMissingPayload(t *testing.T) {
 }
 
 func TestValidate_RejectsDuplicateIdentifier(t *testing.T) {
-	result := validate.Validate(mustParse(t, `{
-		"specVersion": "1.0",
-		"entries": [
-			{"identifier": "urn:example:test", "displayName": "First",
-			 "type": "application/json", "url": "https://example.com/one.json"},
-			{"identifier": "urn:example:test", "displayName": "Second",
-			 "type": "application/json", "url": "https://example.com/two.json"}
-		]
-	}`))
+	result := validate.Validate(parse(t, fixture.InvalidJSON))
 
 	if result.IsValid || !hasError(result, "duplicate identifier") {
 		t.Errorf("expected duplicate identifier error, got: %+v", result.Errors)
@@ -145,15 +119,7 @@ func TestValidate_RejectsDuplicateIdentifier(t *testing.T) {
 }
 
 func TestValidate_RejectsDuplicateVersionedPair(t *testing.T) {
-	result := validate.Validate(mustParse(t, `{
-		"specVersion": "1.0",
-		"entries": [
-			{"identifier": "urn:example:v", "displayName": "First",
-			 "type": "application/json", "url": "https://example.com/one.json", "version": "1.0.0"},
-			{"identifier": "urn:example:v", "displayName": "Second",
-			 "type": "application/json", "url": "https://example.com/two.json", "version": "1.0.0"}
-		]
-	}`))
+	result := validate.Validate(parse(t, fixture.InvalidJSON))
 
 	if result.IsValid || !hasError(result, "duplicate (identifier, version) pair") {
 		t.Errorf("expected duplicate pair error, got: %+v", result.Errors)
@@ -161,15 +127,7 @@ func TestValidate_RejectsDuplicateVersionedPair(t *testing.T) {
 }
 
 func TestValidate_RejectsMixedVersioning(t *testing.T) {
-	result := validate.Validate(mustParse(t, `{
-		"specVersion": "1.0",
-		"entries": [
-			{"identifier": "urn:example:mixed", "displayName": "Unversioned",
-			 "type": "application/json", "url": "https://example.com/u.json"},
-			{"identifier": "urn:example:mixed", "displayName": "Versioned",
-			 "type": "application/json", "url": "https://example.com/v.json", "version": "1.0.0"}
-		]
-	}`))
+	result := validate.Validate(parse(t, fixture.InvalidJSON))
 
 	if result.IsValid || !hasError(result, "cannot appear with and without version") {
 		t.Errorf("expected mixed versioning error, got: %+v", result.Errors)
@@ -177,15 +135,9 @@ func TestValidate_RejectsMixedVersioning(t *testing.T) {
 }
 
 func TestValidate_RejectsMisalignedTrustIdentityDomain(t *testing.T) {
-	// Publisher domain acme.com vs identity domain evil.example.
-	result := validate.Validate(mustParse(t, `{
-		"specVersion": "1.0",
-		"entries": [
-			{"identifier": "urn:air:acme.com:agent:finance", "displayName": "Finance",
-			 "type": "application/json", "url": "https://example.com/finance.json",
-			 "trustManifest": {"identity": "did:web:evil.example"}}
-		]
-	}`))
+	// The invalid fixture pairs publisher domain acme.com with identity domain
+	// evil.example.
+	result := validate.Validate(parse(t, fixture.InvalidJSON))
 
 	if result.IsValid || !hasError(result, "does not align with the entry identifier publisher domain") {
 		t.Errorf("expected trust identity domain-alignment error, got: %+v", result.Errors)
@@ -193,16 +145,9 @@ func TestValidate_RejectsMisalignedTrustIdentityDomain(t *testing.T) {
 }
 
 func TestValidate_AcceptsAlignedNonEqualTrustIdentity(t *testing.T) {
-	// SPIFFE identity under the same domain, not equal to the identifier.
-	result := validate.Validate(mustParse(t, `{
-		"specVersion": "1.0",
-		"host": {"displayName": "Acme"},
-		"entries": [
-			{"identifier": "urn:air:acme.com:agent:finance", "displayName": "Finance",
-			 "type": "application/json", "url": "https://example.com/finance.json",
-			 "trustManifest": {"identity": "spiffe://acme.com/ns/finance/sa/finance-pod"}}
-		]
-	}`))
+	// The comprehensive fixture binds urn:air:acme.com:... to did:web:acme.com:
+	// aligned by domain, not equal to the identifier.
+	result := validate.Validate(parse(t, fixture.CatalogJSON))
 
 	if !result.IsValid {
 		t.Fatalf("expected valid aligned binding, errors: %+v", result.Errors)
@@ -214,15 +159,7 @@ func TestValidate_AcceptsAlignedNonEqualTrustIdentity(t *testing.T) {
 }
 
 func TestValidate_RejectsMissingRequiredFields(t *testing.T) {
-	result := validate.Validate(mustParse(t, `{
-		"specVersion": "1.0",
-		"host": {"identifier": "did:web:example.com"},
-		"entries": [
-			{"url": "https://example.com/a.json",
-			 "publisher": {"identityType": "did"},
-			 "trustManifest": {"identityType": "did"}}
-		]
-	}`))
+	result := validate.Validate(parse(t, fixture.InvalidJSON))
 
 	wants := []string{
 		"host.displayName is required",
@@ -241,14 +178,7 @@ func TestValidate_RejectsMissingRequiredFields(t *testing.T) {
 }
 
 func TestValidate_InvalidUpdatedAtAndNonURIWarning(t *testing.T) {
-	result := validate.Validate(mustParse(t, `{
-		"specVersion": "1.0",
-		"entries": [
-			{"identifier": "plain-identifier", "displayName": "Plain",
-			 "type": "application/json", "url": "https://example.com/plain.json",
-			 "updatedAt": "yesterday"}
-		]
-	}`))
+	result := validate.Validate(parse(t, fixture.InvalidJSON))
 
 	if !hasError(result, "updatedAt is not a valid RFC 3339 datetime") {
 		t.Errorf("expected updatedAt error, got: %+v", result.Errors)
@@ -260,16 +190,7 @@ func TestValidate_InvalidUpdatedAtAndNonURIWarning(t *testing.T) {
 }
 
 func TestValidate_RejectsEmptyMetadataKeys(t *testing.T) {
-	result := validate.Validate(mustParse(t, `{
-		"specVersion": "1.0",
-		"metadata": {"": true},
-		"entries": [
-			{"identifier": "urn:example:m", "displayName": "M",
-			 "type": "application/json", "url": "https://example.com/m.json",
-			 "metadata": {"": 1},
-			 "trustManifest": {"identity": "urn:example:m", "metadata": {"": "bad"}}}
-		]
-	}`))
+	result := validate.Validate(parse(t, fixture.InvalidJSON))
 
 	count := 0
 
@@ -306,20 +227,8 @@ func TestValidate_SpecVersions(t *testing.T) {
 }
 
 func TestValidate_NestedCatalog(t *testing.T) {
-	result := validate.Validate(mustParse(t, `{
-		"specVersion": "1.0",
-		"entries": [
-			{"identifier": "urn:example:root", "displayName": "Root",
-			 "type": "application/ai-catalog+json",
-			 "data": {
-				"specVersion": "1.0",
-				"entries": [
-					{"identifier": "urn:example:child", "displayName": "Child",
-					 "type": "application/json", "url": "https://example.com/child.json"}
-				]
-			 }}
-		]
-	}`))
+	// The comprehensive fixture contains a valid nested catalog entry.
+	result := validate.Validate(parse(t, fixture.CatalogJSON))
 
 	if !result.IsValid {
 		t.Errorf("expected valid nested catalog, errors: %+v", result.Errors)
@@ -327,14 +236,7 @@ func TestValidate_NestedCatalog(t *testing.T) {
 }
 
 func TestValidate_InvalidNestedCatalog(t *testing.T) {
-	result := validate.Validate(mustParse(t, `{
-		"specVersion": "1.0",
-		"entries": [
-			{"identifier": "urn:example:bad", "displayName": "Bad",
-			 "type": "application/ai-catalog+json",
-			 "data": {"specVersion": 12345}}
-		]
-	}`))
+	result := validate.Validate(parse(t, fixture.InvalidJSON))
 
 	if result.IsValid || !hasError(result, "nested catalog data is not a valid AI Catalog") {
 		t.Errorf("expected invalid nested catalog error, got: %+v", result.Errors)
@@ -342,28 +244,11 @@ func TestValidate_InvalidNestedCatalog(t *testing.T) {
 }
 
 func TestValidate_NestedDepthLimit(t *testing.T) {
-	// Build 4 levels of nesting, which exceeds the recommended limit.
-	doc := buildNested(4)
-
-	result := validate.Validate(mustParse(t, doc))
+	result := validate.Validate(parse(t, fixture.NestedDeepJSON))
 
 	if !hasError(result, "nested catalog depth exceeds recommended limit") {
 		t.Errorf("expected depth-limit error, got: %+v", result.Errors)
 	}
-}
-
-func buildNested(levels int) string {
-	if levels == 0 {
-		return `{"specVersion": "1.0", "entries": [
-			{"identifier": "urn:example:leaf", "displayName": "Leaf",
-			 "type": "application/json", "url": "https://example.com/leaf.json"}
-		]}`
-	}
-
-	return `{"specVersion": "1.0", "entries": [
-		{"identifier": "urn:example:nested", "displayName": "Nested",
-		 "type": "application/ai-catalog+json", "data": ` + buildNested(levels-1) + `}
-	]}`
 }
 
 func TestConformanceLevel_String(t *testing.T) {

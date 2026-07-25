@@ -11,13 +11,13 @@ import (
 	"testing"
 
 	"github.com/agntcy/ai-catalog-go-sdk/catalog"
+	"github.com/agntcy/ai-catalog-go-sdk/internal/fixture"
 )
 
+// Identifiers known to exist in the shared fixture.
 const (
-	mcpType = "application/mcp-server-card+json"
-
-	leafAID = "urn:example:mcp:a"
-	leafBID = "urn:example:a2a:b"
+	entryAID = "urn:example:agent:finance-v1"
+	entryBID = "urn:example:data:nlp-corpus"
 )
 
 // stubFetcher serves documents from an in-memory map, recording call counts.
@@ -42,13 +42,7 @@ func (s *stubFetcher) Fetch(ctx context.Context, url string) ([]byte, error) {
 }
 
 func rootCatalog() []byte {
-	return []byte(`{
-		"specVersion": "1.0",
-		"entries": [
-			{"identifier": "` + leafAID + `", "type": "` + mcpType + `", "url": "https://example.com/a.json"},
-			{"identifier": "` + leafBID + `", "type": "` + mcpType + `", "url": "https://example.com/b.json"}
-		]
-	}`)
+	return fixture.CatalogJSON
 }
 
 // loadDoc loads a Source into its in-memory document, failing the test on error.
@@ -76,8 +70,8 @@ func TestJSON(t *testing.T) {
 		t.Fatalf("JSON: %v", err)
 	}
 
-	if _, ok := loadDoc(t, c).GetByID(leafBID); !ok {
-		t.Fatalf("expected to find %q", leafBID)
+	if _, ok := loadDoc(t, c).GetByID(entryBID); !ok {
+		t.Fatalf("expected to find %q", entryBID)
 	}
 }
 
@@ -97,8 +91,8 @@ func TestWeb_LoadsViaFetcher(t *testing.T) {
 		t.Fatalf("Web: %v", err)
 	}
 
-	if _, ok := loadDoc(t, c).GetByID(leafAID); !ok {
-		t.Fatalf("expected to find %q", leafAID)
+	if _, ok := loadDoc(t, c).GetByID(entryAID); !ok {
+		t.Fatalf("expected to find %q", entryAID)
 	}
 
 	if fetcher.calls != 1 {

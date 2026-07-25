@@ -9,18 +9,20 @@ import (
 	"testing"
 
 	"github.com/agntcy/ai-catalog-go-sdk/catalog"
+	"github.com/agntcy/ai-catalog-go-sdk/internal/fixture"
 	"github.com/agntcy/ai-catalog-go-sdk/trust"
 )
 
 // SHA-256 of the ASCII bytes "test".
 const testSHA256 = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
 
-func mustParse(t *testing.T, doc string) *catalog.AICatalog {
+// parse parses one of the shared fixture documents.
+func parse(t *testing.T, data []byte) *catalog.AICatalog {
 	t.Helper()
 
-	c, err := catalog.ParseString(doc)
+	c, err := catalog.Parse(data)
 	if err != nil {
-		t.Fatalf("parse document: %v", err)
+		t.Fatalf("parse fixture: %v", err)
 	}
 
 	return c
@@ -83,18 +85,7 @@ func TestParseDigest_Errors(t *testing.T) {
 }
 
 func TestCanonicalizeTrustManifest_StripsSignatureAndSortsKeys(t *testing.T) {
-	c := mustParse(t, `{
-		"specVersion": "1.0",
-		"entries": [
-			{"identifier": "urn:example:agent", "displayName": "Agent",
-			 "type": "application/json", "url": "https://example.com/agent.json",
-			 "trustManifest": {
-				"identity": "urn:example:agent",
-				"signature": "header..signature",
-				"metadata": {"zeta": true, "alpha": 1}
-			 }}
-		]
-	}`)
+	c := parse(t, fixture.TrustCleanJSON)
 
 	manifest := c.Entries[0].TrustManifest
 	if manifest == nil {
@@ -122,32 +113,7 @@ func TestCanonicalizeTrustManifest_StripsSignatureAndSortsKeys(t *testing.T) {
 }
 
 func TestAnalyzeCatalog_Findings(t *testing.T) {
-	report := trust.AnalyzeCatalog(mustParse(t, `{
-		"specVersion": "1.0",
-		"host": {
-			"displayName": "Example Host",
-			"identifier": "did:web:example.com",
-			"trustManifest": {
-				"identity": "did:web:other.example.com",
-				"signature": "not-a-detached-jws"
-			}
-		},
-		"entries": [
-			{"identifier": "urn:air:acme.com:agent:artifact", "displayName": "Artifact",
-			 "type": "application/json", "url": "https://example.com/artifact.json",
-			 "trustManifest": {
-				"identity": "did:web:evil.example",
-				"signature": "header.payload.signature",
-				"trustSchema": {"identifier": "", "version": ""},
-				"attestations": [
-					{"type": "", "uri": "", "digest": "md5:abcd"}
-				],
-				"provenance": [
-					{"relation": "", "sourceId": "", "sourceDigest": "sha256:not-hex!"}
-				]
-			 }}
-		]
-	}`))
+	report := trust.AnalyzeCatalog(parse(t, fixture.TrustFindingsJSON))
 
 	if report.Host == nil || len(report.Host.Findings) != 2 {
 		t.Fatalf("expected 2 host findings, got: %+v", report.Host)
@@ -174,14 +140,7 @@ func TestAnalyzeCatalog_Findings(t *testing.T) {
 }
 
 func TestAnalyzeCatalog_NonURIIdentityWarns(t *testing.T) {
-	report := trust.AnalyzeCatalog(mustParse(t, `{
-		"specVersion": "1.0",
-		"entries": [
-			{"identifier": "urn:example:artifact", "displayName": "Artifact",
-			 "type": "application/json", "url": "https://example.com/artifact.json",
-			 "trustManifest": {"identity": "plain-identifier"}}
-		]
-	}`))
+	report := trust.AnalyzeCatalog(parse(t, fixture.TrustNonURIJSON))
 
 	if !containsFinding(report, "trust manifest identity SHOULD be a URI-like identifier") {
 		t.Errorf("expected URI-like identity warning, got: %+v", report.Findings)
@@ -193,31 +152,7 @@ func TestAnalyzeCatalog_NonURIIdentityWarns(t *testing.T) {
 }
 
 func TestAnalyzeCatalog_Clean(t *testing.T) {
-	report := trust.AnalyzeCatalog(mustParse(t, `{
-		"specVersion": "1.0",
-		"host": {
-			"displayName": "Example Host",
-			"identifier": "did:web:example.com",
-			"trustManifest": {"identity": "did:web:example.com", "signature": "header..signature"}
-		},
-		"entries": [
-			{"identifier": "urn:example:artifact", "displayName": "Artifact",
-			 "type": "application/json", "url": "https://example.com/artifact.json",
-			 "trustManifest": {
-				"identity": "urn:example:artifact",
-				"signature": "header..signature",
-				"trustSchema": {"identifier": "urn:trust:example", "version": "1.0"},
-				"attestations": [
-					{"type": "publisher-identity", "uri": "https://example.com/p.jwt",
-					 "mediaType": "application/jwt", "digest": "sha256:`+testSHA256+`"}
-				],
-				"provenance": [
-					{"relation": "publishedFrom", "sourceId": "https://github.com/example/repo",
-					 "sourceDigest": "sha256:`+testSHA256+`"}
-				]
-			 }}
-		]
-	}`))
+	report := trust.AnalyzeCatalog(parse(t, fixture.TrustCleanJSON))
 
 	if len(report.Findings) != 0 {
 		t.Errorf("expected no findings, got: %+v", report.Findings)

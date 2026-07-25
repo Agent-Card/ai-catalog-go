@@ -9,52 +9,40 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/agntcy/ai-catalog-go-sdk/internal/fixture"
 )
 
 const (
 	testSpecVersion = "1.0"
+	fixtureEntries  = 11
 	financeID       = "urn:example:agent:finance-v1"
 	nlpID           = "urn:example:data:nlp-corpus"
 	embeddingID     = "urn:example:model:embedding-v2"
+	taggedID        = "urn:example:model:tagged"
 	modifiedName    = "Modified"
 )
 
-var validCatalogJSON = []byte(`{
-	"specVersion": "1.0",
-	"host": {
-		"displayName": "Acme Corp",
-		"identifier": "did:example:org-acme-corp",
-		"documentationUrl": "https://example.com/docs"
-	},
-	"entries": [
-		{
-			"identifier": "urn:example:agent:finance-v1",
-			"displayName": "Finance Agent",
-			"type": "application/a2a-agent-card+json",
-			"description": "Handles financial queries",
-			"tags": ["finance", "banking"],
-			"url": "https://example.com/finance.json"
-		},
-		{
-			"identifier": "urn:example:data:nlp-corpus",
-			"displayName": "NLP Corpus",
-			"type": "application/octet-stream",
-			"description": "Large language model training data",
-			"tags": ["nlp", "dataset"],
-			"url": "https://example.com/nlp.bin"
-		},
-		{
-			"identifier": "urn:example:model:embedding-v2",
-			"type": "application/gguf",
-			"url": "https://example.com/embed.gguf"
-		}
-	]
-}`)
+// validCatalogJSON is the shared, spec-valid fixture used by the parsing and
+// query tests.
+var validCatalogJSON = fixture.CatalogJSON
 
 func validCatalog(t *testing.T) *AICatalog {
 	t.Helper()
 
 	c, err := Parse(validCatalogJSON)
+	if err != nil {
+		t.Fatalf("parse fixture: %v", err)
+	}
+
+	return c
+}
+
+// parseFixture parses one of the shared fixture documents.
+func parseFixture(t *testing.T, data []byte) *AICatalog {
+	t.Helper()
+
+	c, err := Parse(data)
 	if err != nil {
 		t.Fatalf("parse fixture: %v", err)
 	}
@@ -73,8 +61,8 @@ func TestParse_Valid(t *testing.T) {
 		t.Errorf("unexpected host: %+v", c.Host)
 	}
 
-	if len(c.Entries) != 3 {
-		t.Fatalf("len(Entries) = %d, want 3", len(c.Entries))
+	if len(c.Entries) != fixtureEntries {
+		t.Fatalf("len(Entries) = %d, want %d", len(c.Entries), fixtureEntries)
 	}
 
 	if c.Entries[0].Type != "application/a2a-agent-card+json" {
@@ -94,8 +82,8 @@ func TestParseString(t *testing.T) {
 		t.Fatalf("ParseString error: %v", err)
 	}
 
-	if len(c.Entries) != 3 {
-		t.Errorf("len(Entries) = %d, want 3", len(c.Entries))
+	if len(c.Entries) != fixtureEntries {
+		t.Errorf("len(Entries) = %d, want %d", len(c.Entries), fixtureEntries)
 	}
 }
 
@@ -240,7 +228,7 @@ func TestGetByID_ReturnsPointerIntoSlice(t *testing.T) {
 
 	entry.DisplayName = modifiedName
 
-	if c.Entries[1].DisplayName != modifiedName {
+	if again, _ := c.GetByID(nlpID); again.DisplayName != modifiedName {
 		t.Error("GetByID should return a pointer into the Entries slice")
 	}
 }
@@ -249,7 +237,7 @@ func TestGetByType(t *testing.T) {
 	c := validCatalog(t)
 
 	agents := c.GetByType("application/a2a-agent-card+json")
-	if len(agents) != 1 || agents[0].Identifier != financeID {
+	if len(agents) != 4 || agents[0].Identifier != financeID {
 		t.Errorf("GetByType(agent) = %+v", agents)
 	}
 
@@ -268,7 +256,7 @@ func TestGetByType_ReturnsPointerIntoSlice(t *testing.T) {
 
 	results[0].DisplayName = modifiedName
 
-	if c.Entries[2].DisplayName != modifiedName {
+	if again := c.GetByType("application/gguf"); again[0].DisplayName != modifiedName {
 		t.Error("GetByType should return pointers into the Entries slice")
 	}
 }
@@ -291,25 +279,15 @@ func TestGetByTag(t *testing.T) {
 }
 
 func TestGetByPublisher(t *testing.T) {
-	c, err := ParseString(`{
-		"specVersion": "1.0",
-		"entries": [
-			{"identifier": "urn:a", "type": "application/gguf", "url": "https://x/a",
-				"publisher": {"identifier": "did:example:acme", "displayName": "Acme"}},
-			{"identifier": "urn:b", "type": "application/gguf", "url": "https://x/b",
-				"publisher": {"identifier": "did:example:acme", "displayName": "Acme"}},
-			{"identifier": "urn:c", "type": "application/gguf", "url": "https://x/c",
-				"publisher": {"identifier": "did:example:other", "displayName": "Other"}},
-			{"identifier": "urn:d", "type": "application/gguf", "url": "https://x/d"}
-		]
-	}`)
-	if err != nil {
-		t.Fatalf("parse fixture: %v", err)
-	}
+	c := validCatalog(t)
 
 	acme := c.GetByPublisher("did:example:acme")
-	if len(acme) != 2 || acme[0].Identifier != "urn:a" || acme[1].Identifier != "urn:b" {
+	if len(acme) != 2 || acme[0].Identifier != financeID || acme[1].Identifier != nlpID {
 		t.Errorf("GetByPublisher(acme) = %+v", acme)
+	}
+
+	if got := c.GetByPublisher("did:example:other"); len(got) != 1 || got[0].Identifier != embeddingID {
+		t.Errorf("GetByPublisher(other) = %+v", got)
 	}
 
 	if got := c.GetByPublisher("did:example:missing"); got != nil {
@@ -319,29 +297,11 @@ func TestGetByPublisher(t *testing.T) {
 
 const versionedID = "urn:air:acme.com:agent:finance"
 
-func versionedCatalog(t *testing.T) *AICatalog {
-	t.Helper()
-
-	c, err := ParseString(`{
-		"specVersion": "1.0",
-		"entries": [
-			{"identifier": "` + versionedID + `", "version": "2.0.0", "type": "application/a2a-agent-card+json", "url": "https://x/2.0.0", "updatedAt": "2026-01-20T08:00:00Z"},
-			{"identifier": "` + versionedID + `", "version": "2.1.0", "type": "application/a2a-agent-card+json", "url": "https://x/2.1.0", "updatedAt": "2026-03-15T10:00:00Z"},
-			{"identifier": "` + versionedID + `", "version": "2.0.1", "type": "application/a2a-agent-card+json", "url": "https://x/2.0.1", "updatedAt": "2026-02-01T08:00:00Z"}
-		]
-	}`)
-	if err != nil {
-		t.Fatalf("parse fixture: %v", err)
-	}
-
-	return c
-}
-
 func TestGetByIDAndVersion(t *testing.T) {
-	c := versionedCatalog(t)
+	c := validCatalog(t)
 
 	entry, ok := c.GetByIDAndVersion(versionedID, "2.0.1")
-	if !ok || entry.URL != "https://x/2.0.1" {
+	if !ok || entry.Version != "2.0.1" {
 		t.Fatalf("GetByIDAndVersion = %+v, ok=%v", entry, ok)
 	}
 
@@ -351,7 +311,7 @@ func TestGetByIDAndVersion(t *testing.T) {
 }
 
 func TestVersions(t *testing.T) {
-	c := versionedCatalog(t)
+	c := validCatalog(t)
 
 	if got := c.Versions(versionedID); len(got) != 3 {
 		t.Errorf("Versions = %d, want 3", len(got))
@@ -363,7 +323,7 @@ func TestVersions(t *testing.T) {
 }
 
 func TestGetLatest_Semver(t *testing.T) {
-	c := versionedCatalog(t)
+	c := validCatalog(t)
 
 	entry, ok := c.GetLatest(versionedID)
 	if !ok || entry.Version != "2.1.0" {
@@ -376,37 +336,24 @@ func TestGetLatest_Semver(t *testing.T) {
 }
 
 func TestGetLatest_FallbackToUpdatedAt(t *testing.T) {
-	c, err := ParseString(`{
-		"specVersion": "1.0",
-		"entries": [
-			{"identifier": "urn:x", "type": "application/octet-stream", "url": "https://x/old", "updatedAt": "2026-01-01T00:00:00Z"},
-			{"identifier": "urn:x", "type": "application/octet-stream", "url": "https://x/new", "updatedAt": "2026-05-01T00:00:00Z"}
-		]
-	}`)
-	if err != nil {
-		t.Fatalf("parse: %v", err)
-	}
+	// The invalid fixture's "urn:dup" pair is two same-identifier, unversioned
+	// entries (a deliberately invalid shape) that exercise the updatedAt
+	// fallback.
+	c := parseFixture(t, fixture.InvalidJSON)
 
-	entry, ok := c.GetLatest("urn:x")
-	if !ok || entry.URL != "https://x/new" {
+	entry, ok := c.GetLatest("urn:dup")
+	if !ok || entry.URL != "https://example.com/dup-new" {
 		t.Fatalf("GetLatest (updatedAt fallback) = %+v, ok=%v", entry, ok)
 	}
 }
 
 func TestGetLatest_PrefersSemverOverUnparseable(t *testing.T) {
-	c, err := ParseString(`{
-		"specVersion": "1.0",
-		"entries": [
-			{"identifier": "urn:m", "version": "1.0.0", "type": "application/octet-stream", "url": "https://m/semver", "updatedAt": "2026-01-01T00:00:00Z"},
-			{"identifier": "urn:m", "version": "latest", "type": "application/octet-stream", "url": "https://m/tag", "updatedAt": "2026-09-01T00:00:00Z"}
-		]
-	}`)
-	if err != nil {
-		t.Fatalf("parse: %v", err)
-	}
+	c := validCatalog(t)
 
-	entry, ok := c.GetLatest("urn:m")
-	if !ok || entry.URL != "https://m/semver" {
+	// taggedID has a "1.0.0" entry and a newer (by updatedAt) "latest" entry;
+	// the parseable semver must win over the unparseable tag.
+	entry, ok := c.GetLatest(taggedID)
+	if !ok || entry.Version != "1.0.0" {
 		t.Fatalf("GetLatest should prefer parseable semver, got %+v", entry)
 	}
 }
@@ -437,11 +384,11 @@ func TestSearch(t *testing.T) {
 		want  int
 	}{
 		{"nlp-corpus", 1},
-		{"FINANCE", 1},
+		{"FINANCE", 4}, // finance-v1 entry plus the three versioned finance agents
 		{"NLP Corpus", 1},
 		{"financial queries", 1},
 		{"dataset", 1},
-		{"urn:example", 3},
+		{"urn:example", 7},
 		{"xyzzy-not-found", 0},
 	}
 
@@ -464,7 +411,7 @@ func TestSearchByRegex(t *testing.T) {
 		t.Errorf("got %d results, want 2", len(results))
 	}
 
-	anchored, err := c.SearchByRegex(`^urn:example:model:`)
+	anchored, err := c.SearchByRegex(`^urn:example:model:embedding-v2`)
 	if err != nil {
 		t.Fatalf("SearchByRegex error: %v", err)
 	}
