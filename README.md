@@ -5,9 +5,18 @@ SPDX-License-Identifier: Apache-2.0
 
 # AI Catalog Go SDK
 
-A Go toolkit for producing, consuming, validating, and packaging [AI Catalog](https://agent-card.github.io/ai-catalog/) documents — the typed, nestable JSON format for making heterogeneous AI artifacts (MCP servers, A2A agents, datasets, model cards, nested catalogs, …) discoverable.
+A Go toolkit for consuming, validating, and analyzing [AI Catalog](https://agent-card.github.io/ai-catalog/) documents — the typed, nestable JSON format for making heterogeneous AI artifacts (MCP servers, A2A agents, datasets, model cards, nested catalogs, …) discoverable.
 
 The SDK is a faithful implementation of the [AI Catalog specification](https://agent-card.github.io/ai-catalog/spec/).
+
+## Scope
+
+The repository follows the AI Catalog spec's own split between **normative** content (defines the format and conformance) and **non-normative** content (informative or convenience code):
+
+- **Normative** — a faithful implementation of the spec and the stable, supported API: the document/entry types, parsing, and querying (`catalog`); conformance validation (`validate`); and trust-manifest analysis and canonicalization (`trust`). For convenience, `catalog` also adds lookups the spec does not require (e.g. `GetByTag`, `GetByPublisher`, `SearchByRegex`) on the spec-defined types.
+- **Non-normative** — code the spec does not define:
+  - `provider` (and the `catalog.Source` interface) — a supported convenience for loading a catalog from a file, an HTTP endpoint, or a well-known URI.
+  - [`examples/`](./examples) — informative, spec-adjacent samples such as packaging a catalog as an OCI artifact (the spec only describes an informative "mapping to OCI"). Reference code to copy and adapt, not part of the supported API.
 
 ## Installation
 
@@ -130,14 +139,10 @@ canonical, err := trust.CanonicalizeTrustManifest(entry.TrustManifest)
 
 ### Package as an OCI artifact
 
-```go
-import "github.com/agntcy/ai-catalog-go-sdk/oci"
+Mapping a catalog onto OCI is not part of the specification, so it lives in [`examples/oci`](./examples/oci) rather than the SDK. Run it with:
 
-set, err := oci.PackCatalog(doc)           // -> *oci.ArtifactSet
-err = set.ExportLayout("./layout", "v1")   // write an OCI image layout
-
-imported, err := oci.ImportLayout("./layout", "v1")
-roundTripped, err := oci.UnpackCatalog(imported)
+```bash
+go run ./examples/oci
 ```
 
 ## Development
