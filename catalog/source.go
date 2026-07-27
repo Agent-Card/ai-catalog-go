@@ -13,9 +13,9 @@ type Source interface {
 	// Load returns the whole AI Catalog document in memory. The context
 	// governs any I/O and cancellation.
 	//
-	// The returned document is owned by the Source and must be treated as
-	// read-only: implementations may return a shared, cached value, so
-	// mutating it can corrupt state observed by other callers. Callers that
-	// need to modify the document should copy it first.
+	// Each call returns a fresh document that the caller owns and may read or
+	// mutate freely without affecting the Source or other callers; the
+	// built-in providers re-parse on every call. Implementations backed by a
+	// shared, cached value SHOULD return an independent copy.
 	Load(ctx context.Context) (*AICatalog, error)
 }

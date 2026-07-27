@@ -100,6 +100,39 @@ func TestWeb_LoadsViaFetcher(t *testing.T) {
 	}
 }
 
+func TestLoad_ReturnsIndependentDocuments(t *testing.T) {
+	const url = "https://host.example/catalog.json"
+
+	fetcher := &stubFetcher{docs: map[string][]byte{url: rootCatalog()}}
+
+	c, err := Web(context.Background(), url, WithFetcher(fetcher))
+	if err != nil {
+		t.Fatalf("Web: %v", err)
+	}
+
+	first := loadDoc(t, c)
+	second := loadDoc(t, c)
+
+	if first == second {
+		t.Fatal("each Load should return a distinct document, got the same pointer")
+	}
+
+	// Mutating one document — appending an entry and editing a nested field —
+	// must not leak into any later Load.
+	first.Entries = append(first.Entries, catalog.CatalogEntry{Identifier: "urn:mutated"})
+	first.Entries[0].DisplayName = "Mutated"
+
+	third := loadDoc(t, c)
+
+	if _, ok := third.GetByID("urn:mutated"); ok {
+		t.Error("appended entry leaked into a later Load")
+	}
+
+	if third.Entries[0].DisplayName == "Mutated" {
+		t.Error("field mutation leaked into a later Load")
+	}
+}
+
 func TestWeb_ContextCancellation(t *testing.T) {
 	const url = "https://host.example/catalog.json"
 

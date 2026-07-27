@@ -101,13 +101,25 @@ func (h *httpFetcher) Fetch(ctx context.Context, url string) ([]byte, error) {
 	return data, nil
 }
 
-// resolvedSource is a catalog.Source backed by an already-loaded document. It is
-// read-only and safe for concurrent use.
+// resolvedSource is a catalog.Source backed by the serialized bytes of a
+// validated document. Each Load re-parses them, so every caller receives an
+// independent document it fully owns. Safe for concurrent use.
 type resolvedSource struct {
-	doc *catalog.AICatalog
+	data []byte
 }
 
 var _ catalog.Source = (*resolvedSource)(nil)
+
+// newResolvedSource captures c as bytes so that later Loads can hand back
+// independent copies.
+func newResolvedSource(c *catalog.AICatalog) (*resolvedSource, error) {
+	data, err := c.ToJSON()
+	if err != nil {
+		return nil, fmt.Errorf("serialize catalog: %w", err)
+	}
+
+	return &resolvedSource{data: data}, nil
+}
 
 // JSON creates a catalog.Source from a local AI Catalog JSON file.
 func JSON(path string) (catalog.Source, error) {
@@ -116,7 +128,7 @@ func JSON(path string) (catalog.Source, error) {
 		return nil, fmt.Errorf("load catalog: %w", err)
 	}
 
-	return &resolvedSource{doc: c}, nil
+	return newResolvedSource(c)
 }
 
 // Web creates a catalog.Source from an AI Catalog served at url, retrieved via
@@ -134,7 +146,7 @@ func Web(ctx context.Context, url string, opts ...Option) (catalog.Source, error
 		return nil, fmt.Errorf("parse catalog: %w", err)
 	}
 
-	return &resolvedSource{doc: c}, nil
+	return newResolvedSource(c)
 }
 
 func (p *resolvedSource) Load(ctx context.Context) (*catalog.AICatalog, error) {
@@ -142,5 +154,10 @@ func (p *resolvedSource) Load(ctx context.Context) (*catalog.AICatalog, error) {
 		return nil, fmt.Errorf("load catalog: %w", err)
 	}
 
-	return p.doc, nil
+	doc, err := catalog.Parse(p.data)
+	if err != nil {
+		return nil, fmt.Errorf("parse catalog: %w", err)
+	}
+
+	return doc, nil
 }
