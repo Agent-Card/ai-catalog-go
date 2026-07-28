@@ -102,6 +102,13 @@ func (d *ParsedDigest) Algorithm() string { return d.algorithm }
 // HexValue returns the normalized (lowercased) hex digest value.
 func (d *ParsedDigest) HexValue() string { return d.hexValue }
 
+// Hex lengths of the accepted digest algorithms (two hex chars per byte).
+const (
+	sha256HexLen = 64
+	sha384HexLen = 96
+	sha512HexLen = 128
+)
+
 // ParseDigest parses and validates a digest string of the form
 // "algorithm:hex-value". Only SHA-256, SHA-384, and SHA-512 are accepted;
 // weaker algorithms are rejected.
@@ -113,15 +120,26 @@ func ParseDigest(value string) (*ParsedDigest, error) {
 
 	normalized := strings.ToLower(algorithm)
 
+	var expectedLen int
+
 	switch normalized {
-	case "sha256", "sha384", "sha512":
+	case "sha256":
+		expectedLen = sha256HexLen
+	case "sha384":
+		expectedLen = sha384HexLen
+	case "sha512":
+		expectedLen = sha512HexLen
 	case "md5", "sha1", "sha224":
 		return nil, fmt.Errorf("%w: %q", ErrWeakDigestAlgorithm, normalized)
 	default:
 		return nil, fmt.Errorf("%w: %q", ErrUnsupportedDigestAlgorithm, normalized)
 	}
 
-	if !isHex(hexValue) {
+	if len(hexValue) != expectedLen {
+		return nil, ErrInvalidDigestHex
+	}
+
+	if _, err := hex.DecodeString(hexValue); err != nil {
 		return nil, ErrInvalidDigestHex
 	}
 
@@ -415,18 +433,4 @@ func looksLikeDetachedJWS(signature string) bool {
 	}
 
 	return parts[0] != "" && parts[1] == "" && parts[2] != ""
-}
-
-func isHex(s string) bool {
-	for _, r := range s {
-		switch {
-		case r >= '0' && r <= '9':
-		case r >= 'a' && r <= 'f':
-		case r >= 'A' && r <= 'F':
-		default:
-			return false
-		}
-	}
-
-	return true
 }

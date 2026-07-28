@@ -72,6 +72,9 @@ func TestParseDigest_Errors(t *testing.T) {
 		{"sha1:abcd", trust.ErrWeakDigestAlgorithm},
 		{"crc32:abcd", trust.ErrUnsupportedDigestAlgorithm},
 		{"sha256:not-hex!", trust.ErrInvalidDigestHex},
+		{"sha256:abc", trust.ErrInvalidDigestHex},                      // too short (and odd length)
+		{"sha256:" + testSHA256 + "ab", trust.ErrInvalidDigestHex},     // too long for sha256
+		{"sha256:" + testSHA256[:63] + "g", trust.ErrInvalidDigestHex}, // right length, non-hex char
 		{"missing-colon", trust.ErrInvalidDigestFormat},
 		{"sha256:", trust.ErrInvalidDigestFormat},
 	}
