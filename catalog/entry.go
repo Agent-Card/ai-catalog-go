@@ -4,67 +4,59 @@
 package catalog
 
 import (
-	"context"
-	"fmt"
-	"io"
-	"net/http"
-	"time"
+	"encoding/json"
+	"strings"
 )
 
-// Entry represents a single catalog entry.
-type Entry struct {
-	Identifier  string     `json:"identifier"`
-	DisplayName string     `json:"displayName,omitempty"`
-	MediaType   string     `json:"mediaType"`
-	Description string     `json:"description,omitempty"`
-	Tags        []string   `json:"tags,omitempty"`
-	URL         string     `json:"url"`
-	UpdatedAt   *time.Time `json:"updatedAt,omitempty"`
+// CatalogEntry describes a single AI artifact: it identifies the artifact,
+// declares its kind via Type, and either references it (URL) or embeds it
+// inline (Data).
+//
+//nolint:revive // "catalog.CatalogEntry" matches the spec type name.
+type CatalogEntry struct {
+	// Identifier is a stable, globally unique identifier, ideally a URN or URI.
+	Identifier string `json:"identifier"`
+
+	DisplayName string `json:"displayName,omitempty"`
+
+	// Type is the media type of the artifact;
+	// "application/ai-catalog+json" denotes a nested catalog.
+	Type string `json:"type"`
+
+	// URL and Data are mutually exclusive: exactly one must be set.
+	URL  string          `json:"url,omitempty"`
+	Data json.RawMessage `json:"data,omitempty"`
+
+	Version     string   `json:"version,omitempty"`
+	Description string   `json:"description,omitempty"`
+	Tags        []string `json:"tags,omitempty"`
+
+	Publisher *Publisher `json:"publisher,omitempty"`
+
+	// TrustManifest.Identity must match Identifier when present.
+	TrustManifest *TrustManifest `json:"trustManifest,omitempty"`
+
+	// UpdatedAt is an RFC 3339 timestamp of the last modification.
+	UpdatedAt string `json:"updatedAt,omitempty"`
+
+	Metadata map[string]json.RawMessage `json:"metadata,omitempty"`
 }
 
-// GetIdentifier returns the entry identifier.
-func (e *Entry) GetIdentifier() string { return e.Identifier }
+// IsNestedCatalog reports whether the entry's Type marks it as a nested catalog.
+func (e *CatalogEntry) IsNestedCatalog() bool {
+	return e.Type == MediaTypeCatalog
+}
 
-// GetDisplayName returns the entry display name.
-func (e *Entry) GetDisplayName() string { return e.DisplayName }
-
-// GetMediaType returns the entry media type.
-func (e *Entry) GetMediaType() string { return e.MediaType }
-
-// GetDescription returns the entry description.
-func (e *Entry) GetDescription() string { return e.Description }
-
-// GetTags returns the entry tags.
-func (e *Entry) GetTags() []string { return e.Tags }
-
-// GetURL returns the entry URL.
-func (e *Entry) GetURL() string { return e.URL }
-
-// GetUpdatedAt returns the entry update timestamp.
-func (e *Entry) GetUpdatedAt() *time.Time { return e.UpdatedAt }
-
-// Pull fetches the artifact at the entry's URL and returns its raw bytes.
-func (e *Entry) Pull(ctx context.Context) ([]byte, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, e.URL, nil)
-	if err != nil {
-		return nil, fmt.Errorf("create request: %w", err)
+// ResolveDisplayName returns the entry's DisplayName when set, otherwise the
+// trailing segment of Identifier (the portion after its final ':' or '/').
+func (e *CatalogEntry) ResolveDisplayName() string {
+	if e.DisplayName != "" {
+		return e.DisplayName
 	}
 
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("fetch artifact: %w", err)
+	if i := strings.LastIndexAny(e.Identifier, ":/"); i >= 0 {
+		return e.Identifier[i+1:]
 	}
 
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
-	}
-
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read response body: %w", err)
-	}
-
-	return data, nil
+	return e.Identifier
 }

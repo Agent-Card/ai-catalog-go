@@ -4,127 +4,175 @@
 package catalog
 
 import (
-	"context"
 	"encoding/json"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
-	"time"
+
+	"github.com/agntcy/ai-catalog-go-sdk/internal/fixture"
 )
 
 const (
-	testSpecVersion = "1.0.0"
-	testEntryAlpha  = "agent-alpha"
+	testSpecVersion = "1.0"
+	fixtureEntries  = 11
+	financeID       = "urn:example:agent:finance-v1"
+	nlpID           = "urn:example:data:nlp-corpus"
+	embeddingID     = "urn:example:model:embedding-v2"
+	taggedID        = "urn:example:model:tagged"
+	modifiedName    = "Modified"
 )
 
-var validCatalogJSON = []byte(`{
-	"specVersion": "1.0.0",
-	"host": {
-		"displayName": "Acme Corp",
-		"identifier": "acme-corp",
-		"documentationURL": "https://example.com/docs"
-	},
-	"entries": [
-		{
-			"identifier": "agent-alpha",
-			"displayName": "Alpha Agent",
-			"mediaType": "application/json",
-			"description": "An agent for alpha tasks",
-			"tags": ["alpha", "automation"],
-			"url": "https://example.com/agents/alpha"
-		},
-		{
-			"identifier": "agent-beta",
-			"displayName": "Beta Agent",
-			"mediaType": "application/json",
-			"description": "An agent for beta workflows",
-			"tags": ["beta", "workflow"],
-			"url": "https://example.com/agents/beta"
-		}
-	]
-}`)
+// validCatalogJSON is the shared, spec-valid fixture used by the parsing and
+// query tests.
+var validCatalogJSON = fixture.CatalogJSON
 
-func validCatalog() *AICatalog {
-	c, _ := FromJSON(validCatalogJSON)
+func validCatalog(t *testing.T) *AICatalog {
+	t.Helper()
+
+	c, err := Parse(validCatalogJSON)
+	if err != nil {
+		t.Fatalf("parse fixture: %v", err)
+	}
 
 	return c
 }
 
-func TestFromJSON_Valid(t *testing.T) {
-	c, err := FromJSON(validCatalogJSON)
+// parseFixture parses one of the shared fixture documents.
+func parseFixture(t *testing.T, data []byte) *AICatalog {
+	t.Helper()
+
+	c, err := Parse(data)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("parse fixture: %v", err)
 	}
+
+	return c
+}
+
+func TestParse_Valid(t *testing.T) {
+	c := validCatalog(t)
 
 	if c.SpecVersion != testSpecVersion {
 		t.Errorf("SpecVersion = %q, want %q", c.SpecVersion, testSpecVersion)
 	}
 
-	if c.Host.Identifier != "acme-corp" {
-		t.Errorf("Host.Identifier = %q, want %q", c.Host.Identifier, "acme-corp")
+	if c.Host == nil || c.Host.Identifier != "did:example:org-acme-corp" {
+		t.Errorf("unexpected host: %+v", c.Host)
 	}
 
-	if len(c.Entries) != 2 {
-		t.Errorf("len(Entries) = %d, want 2", len(c.Entries))
+	if len(c.Entries) != fixtureEntries {
+		t.Fatalf("len(Entries) = %d, want %d", len(c.Entries), fixtureEntries)
+	}
+
+	if c.Entries[0].Type != "application/a2a-agent-card+json" {
+		t.Errorf("entry[0].Type = %q", c.Entries[0].Type)
 	}
 }
 
-func TestFromJSON_InvalidJSON(t *testing.T) {
-	_, err := FromJSON([]byte(`not json`))
-	if err == nil {
+func TestParse_InvalidJSON(t *testing.T) {
+	if _, err := Parse([]byte(`not json`)); err == nil {
 		t.Fatal("expected error for invalid JSON, got nil")
 	}
 }
 
-func TestMarshalToJSON_RoundTrip(t *testing.T) {
-	original := validCatalog()
-
-	data, err := original.MarshalToJSON()
+func TestParseString(t *testing.T) {
+	c, err := ParseString(string(validCatalogJSON))
 	if err != nil {
-		t.Fatalf("MarshalToJSON error: %v", err)
+		t.Fatalf("ParseString error: %v", err)
 	}
 
-	restored, err := FromJSON(data)
+	if len(c.Entries) != fixtureEntries {
+		t.Errorf("len(Entries) = %d, want %d", len(c.Entries), fixtureEntries)
+	}
+}
+
+func TestParseReader(t *testing.T) {
+	c, err := ParseReader(strings.NewReader(string(validCatalogJSON)))
 	if err != nil {
-		t.Fatalf("FromJSON error after round-trip: %v", err)
+		t.Fatalf("ParseReader error: %v", err)
 	}
 
-	if restored.SpecVersion != original.SpecVersion {
-		t.Errorf("SpecVersion mismatch: got %q, want %q", restored.SpecVersion, original.SpecVersion)
+	if c.SpecVersion != testSpecVersion {
+		t.Errorf("SpecVersion = %q", c.SpecVersion)
+	}
+}
+
+func TestToJSON_RoundTrip(t *testing.T) {
+	original := validCatalog(t)
+
+	data, err := original.ToJSON()
+	if err != nil {
+		t.Fatalf("ToJSON error: %v", err)
 	}
 
-	if restored.Host.Identifier != original.Host.Identifier {
-		t.Errorf("Host.Identifier mismatch: got %q, want %q", restored.Host.Identifier, original.Host.Identifier)
+	if !strings.Contains(string(data), `"specVersion":"1.0"`) {
+		t.Errorf("compact JSON missing specVersion: %s", data)
+	}
+
+	if !strings.Contains(string(data), `"type":"application/a2a-agent-card+json"`) {
+		t.Errorf("compact JSON should serialize entry kind as 'type': %s", data)
+	}
+
+	restored, err := Parse(data)
+	if err != nil {
+		t.Fatalf("re-parse error: %v", err)
 	}
 
 	if len(restored.Entries) != len(original.Entries) {
 		t.Errorf("entry count mismatch: got %d, want %d", len(restored.Entries), len(original.Entries))
 	}
+}
 
-	for i, e := range restored.Entries {
-		if e.Identifier != original.Entries[i].Identifier {
-			t.Errorf("entry[%d].Identifier: got %q, want %q", i, e.Identifier, original.Entries[i].Identifier)
-		}
+func TestMarshalJSON_EmptyEntriesSerializesAsArray(t *testing.T) {
+	c := &AICatalog{SpecVersion: testSpecVersion}
+
+	data, err := c.ToJSON()
+	if err != nil {
+		t.Fatalf("ToJSON error: %v", err)
+	}
+
+	if !strings.Contains(string(data), `"entries":[]`) {
+		t.Errorf("empty entries should serialize as []: %s", data)
+	}
+
+	if strings.Contains(string(data), `"entries":null`) {
+		t.Errorf("entries must never serialize as null: %s", data)
 	}
 }
 
-func TestMarshalToJSON_ValidJSON(t *testing.T) {
-	c := validCatalog()
+func TestToJSONIndent(t *testing.T) {
+	c := validCatalog(t)
 
-	data, err := c.MarshalToJSON()
+	data, err := c.ToJSONIndent()
 	if err != nil {
-		t.Fatalf("MarshalToJSON error: %v", err)
+		t.Fatalf("ToJSONIndent error: %v", err)
+	}
+
+	if !strings.Contains(string(data), "\n") {
+		t.Error("indented JSON should contain newlines")
 	}
 
 	var raw map[string]any
 	if err := json.Unmarshal(data, &raw); err != nil {
-		t.Fatalf("output is not valid JSON: %v", err)
+		t.Fatalf("indented output is not valid JSON: %v", err)
 	}
 }
 
-func TestFromFile_Valid(t *testing.T) {
+func TestWriteJSON(t *testing.T) {
+	c := validCatalog(t)
+
+	var buf strings.Builder
+	if err := c.WriteJSON(&buf); err != nil {
+		t.Fatalf("WriteJSON error: %v", err)
+	}
+
+	if _, err := ParseString(buf.String()); err != nil {
+		t.Fatalf("written JSON should parse: %v", err)
+	}
+}
+
+func TestParseFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "catalog.json")
 
@@ -132,352 +180,263 @@ func TestFromFile_Valid(t *testing.T) {
 		t.Fatalf("write temp file: %v", err)
 	}
 
-	c, err := FromFile(path)
+	c, err := ParseFile(path)
 	if err != nil {
-		t.Fatalf("FromFile error: %v", err)
+		t.Fatalf("ParseFile error: %v", err)
 	}
 
 	if c.SpecVersion != testSpecVersion {
-		t.Errorf("SpecVersion = %q, want %q", c.SpecVersion, testSpecVersion)
+		t.Errorf("SpecVersion = %q", c.SpecVersion)
 	}
 }
 
-func TestFromFile_NotFound(t *testing.T) {
-	_, err := FromFile("/nonexistent/path/catalog.json")
-	if err == nil {
+func TestParseFile_NotFound(t *testing.T) {
+	if _, err := ParseFile("/nonexistent/path/catalog.json"); err == nil {
 		t.Fatal("expected error for missing file, got nil")
 	}
 }
 
-func TestFromFile_InvalidJSON(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "bad.json")
+func TestGetByID(t *testing.T) {
+	c := validCatalog(t)
 
-	if err := os.WriteFile(path, []byte(`{bad}`), 0o600); err != nil {
-		t.Fatalf("write temp file: %v", err)
-	}
-
-	_, err := FromFile(path)
-	if err == nil {
-		t.Fatal("expected error for invalid JSON, got nil")
-	}
-}
-
-func TestFromURL_Valid(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write(validCatalogJSON)
-	}))
-	defer srv.Close()
-
-	c, err := FromURL(context.Background(), srv.URL)
-	if err != nil {
-		t.Fatalf("FromURL error: %v", err)
-	}
-
-	if c.SpecVersion != testSpecVersion {
-		t.Errorf("SpecVersion = %q, want %q", c.SpecVersion, testSpecVersion)
-	}
-}
-
-func TestFromURL_Non200(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, "not found", http.StatusNotFound)
-	}))
-	defer srv.Close()
-
-	_, err := FromURL(context.Background(), srv.URL)
-	if err == nil {
-		t.Fatal("expected error for non-200 response, got nil")
-	}
-}
-
-func TestFromURL_InvalidJSON(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(`not json`))
-	}))
-	defer srv.Close()
-
-	_, err := FromURL(context.Background(), srv.URL)
-	if err == nil {
-		t.Fatal("expected error for invalid JSON body, got nil")
-	}
-}
-
-func TestSearch_KeywordMatch(t *testing.T) {
-	c := validCatalog()
-
-	results := c.Search("alpha")
-	if len(results) != 1 {
-		t.Fatalf("Search(alpha): got %d results, want 1", len(results))
-	}
-
-	if results[0].Identifier != testEntryAlpha {
-		t.Errorf("unexpected result: %q", results[0].Identifier)
-	}
-}
-
-func TestSearch_TagMatch(t *testing.T) {
-	c := validCatalog()
-
-	results := c.Search("workflow")
-	if len(results) != 1 {
-		t.Fatalf("Search(workflow): got %d results, want 1", len(results))
-	}
-
-	if results[0].Identifier != "agent-beta" {
-		t.Errorf("unexpected result: %q", results[0].Identifier)
-	}
-}
-
-func TestSearch_CaseInsensitive(t *testing.T) {
-	c := validCatalog()
-
-	results := c.Search("ALPHA")
-	if len(results) != 1 {
-		t.Fatalf("Search(ALPHA): got %d results, want 1", len(results))
-	}
-}
-
-func TestSearch_RegexMatch(t *testing.T) {
-	c := validCatalog()
-
-	results := c.Search("agent-(alpha|beta)")
-	if len(results) != 2 {
-		t.Fatalf("Search regex: got %d results, want 2", len(results))
-	}
-}
-
-func TestSearch_RegexPartialMatch(t *testing.T) {
-	c := validCatalog()
-
-	results := c.Search("^agent-a")
-	if len(results) != 1 {
-		t.Fatalf("Search(^agent-a): got %d results, want 1", len(results))
-	}
-
-	if results[0].Identifier != testEntryAlpha {
-		t.Errorf("unexpected result: %q", results[0].Identifier)
-	}
-}
-
-func TestSearch_NoMatch(t *testing.T) {
-	c := validCatalog()
-
-	results := c.Search("nonexistent")
-	if len(results) != 0 {
-		t.Errorf("Search(nonexistent): got %d results, want 0", len(results))
-	}
-}
-
-func TestSearch_EmptyQuery(t *testing.T) {
-	c := validCatalog()
-
-	// Empty string matches every entry (it is a substring of everything).
-	results := c.Search("")
-	if len(results) != len(c.Entries) {
-		t.Errorf("Search(''): got %d results, want %d", len(results), len(c.Entries))
-	}
-}
-
-func TestGetById_Hit(t *testing.T) {
-	c := validCatalog()
-
-	entry, ok := c.GetById(testEntryAlpha)
+	entry, ok := c.GetByID(financeID)
 	if !ok {
-		t.Fatal("GetById(agent-alpha): expected hit, got miss")
+		t.Fatalf("GetByID(%s): expected hit", financeID)
 	}
 
-	if entry.Identifier != testEntryAlpha {
-		t.Errorf("entry.Identifier = %q, want %q", entry.Identifier, testEntryAlpha)
+	if entry.DisplayName != "Finance Agent" {
+		t.Errorf("DisplayName = %q", entry.DisplayName)
+	}
+
+	if _, ok := c.GetByID("urn:does:not:exist"); ok {
+		t.Error("GetByID(unknown): expected miss")
+	}
+
+	// Exact-match only.
+	if _, ok := c.GetByID("finance"); ok {
+		t.Error("GetByID should be exact-match only")
 	}
 }
 
-func TestGetById_Miss(t *testing.T) {
-	c := validCatalog()
+func TestGetByID_ReturnsPointerIntoSlice(t *testing.T) {
+	c := validCatalog(t)
 
-	_, ok := c.GetById("does-not-exist")
-	if ok {
-		t.Fatal("GetById(does-not-exist): expected miss, got hit")
-	}
-}
-
-func TestGetById_ReturnsPointerIntoSlice(t *testing.T) {
-	c := validCatalog()
-
-	entry, ok := c.GetById("agent-beta")
+	entry, ok := c.GetByID(nlpID)
 	if !ok {
 		t.Fatal("expected hit")
 	}
 
-	// Mutate via the pointer and confirm it is reflected in the catalog.
-	entry.DisplayName = "Modified"
+	entry.DisplayName = modifiedName
 
-	if c.Entries[1].DisplayName != "Modified" {
-		t.Error("GetById should return a pointer into the Entries slice")
+	if again, _ := c.GetByID(nlpID); again.DisplayName != modifiedName {
+		t.Error("GetByID should return a pointer into the Entries slice")
 	}
 }
 
-func TestValidate_ValidCatalog(t *testing.T) {
-	c := validCatalog()
+func TestGetByType(t *testing.T) {
+	c := validCatalog(t)
 
-	if err := c.Validate(); err != nil {
-		t.Errorf("Validate on valid catalog: unexpected error: %v", err)
+	agents := c.GetByType("application/a2a-agent-card+json")
+	if len(agents) != 4 || agents[0].Identifier != financeID {
+		t.Errorf("GetByType(agent) = %+v", agents)
+	}
+
+	if got := c.GetByType("application/does-not-exist"); got != nil {
+		t.Errorf("GetByType(unknown) = %+v, want nil", got)
 	}
 }
 
-func TestValidate_EmptySpecVersion(t *testing.T) {
-	c := validCatalog()
-	c.SpecVersion = ""
+func TestGetByType_ReturnsPointerIntoSlice(t *testing.T) {
+	c := validCatalog(t)
 
-	if err := c.Validate(); err == nil {
-		t.Error("Validate: expected error for empty specVersion")
+	results := c.GetByType("application/gguf")
+	if len(results) != 1 {
+		t.Fatalf("len = %d, want 1", len(results))
+	}
+
+	results[0].DisplayName = modifiedName
+
+	if again := c.GetByType("application/gguf"); again[0].DisplayName != modifiedName {
+		t.Error("GetByType should return pointers into the Entries slice")
 	}
 }
 
-func TestValidate_EmptyHostIdentifier(t *testing.T) {
-	c := validCatalog()
-	c.Host.Identifier = ""
+func TestGetByTag(t *testing.T) {
+	c := validCatalog(t)
 
-	if err := c.Validate(); err == nil {
-		t.Error("Validate: expected error for empty host.identifier")
+	finance := c.GetByTag("finance")
+	if len(finance) != 1 || finance[0].Identifier != financeID {
+		t.Errorf("GetByTag(finance) = %+v", finance)
+	}
+
+	if got := c.GetByTag("dataset"); len(got) != 1 || got[0].Identifier != nlpID {
+		t.Errorf("GetByTag(dataset) = %+v", got)
+	}
+
+	if got := c.GetByTag("does-not-exist"); got != nil {
+		t.Errorf("GetByTag(unknown) = %+v, want nil", got)
 	}
 }
 
-func TestValidate_EmptyMediaType(t *testing.T) {
-	c := validCatalog()
-	c.Entries[0].MediaType = ""
+func TestGetByPublisher(t *testing.T) {
+	c := validCatalog(t)
 
-	if err := c.Validate(); err == nil {
-		t.Error("Validate: expected error for entry with empty mediaType")
+	acme := c.GetByPublisher("did:example:acme")
+	if len(acme) != 2 || acme[0].Identifier != financeID || acme[1].Identifier != nlpID {
+		t.Errorf("GetByPublisher(acme) = %+v", acme)
+	}
+
+	if got := c.GetByPublisher("did:example:other"); len(got) != 1 || got[0].Identifier != embeddingID {
+		t.Errorf("GetByPublisher(other) = %+v", got)
+	}
+
+	if got := c.GetByPublisher("did:example:missing"); got != nil {
+		t.Errorf("GetByPublisher(unknown) = %+v, want nil", got)
 	}
 }
 
-func TestValidate_DuplicateIdentifier(t *testing.T) {
-	c := validCatalog()
-	c.Entries = append(c.Entries, Entry{
-		Identifier: testEntryAlpha,
-		MediaType:  "application/json",
-		URL:        "https://example.com/dup",
-	})
+const versionedID = "urn:air:acme.com:agent:finance"
 
-	if err := c.Validate(); err == nil {
-		t.Error("Validate: expected error for duplicate entry identifier")
+func TestGetByIDAndVersion(t *testing.T) {
+	c := validCatalog(t)
+
+	entry, ok := c.GetByIDAndVersion(versionedID, "2.0.1")
+	if !ok || entry.Version != "2.0.1" {
+		t.Fatalf("GetByIDAndVersion = %+v, ok=%v", entry, ok)
+	}
+
+	if _, ok := c.GetByIDAndVersion(versionedID, "9.9.9"); ok {
+		t.Error("expected miss for unknown version")
 	}
 }
 
-func TestValidate_EmptyEntries(t *testing.T) {
-	c := &AICatalog{
-		SpecVersion: testSpecVersion,
-		Host:        Host{Identifier: "acme-corp"},
-		Entries:     []Entry{},
+func TestVersions(t *testing.T) {
+	c := validCatalog(t)
+
+	if got := c.Versions(versionedID); len(got) != 3 {
+		t.Errorf("Versions = %d, want 3", len(got))
 	}
 
-	if err := c.Validate(); err != nil {
-		t.Errorf("Validate with empty entries: unexpected error: %v", err)
-	}
-}
-
-func TestEntryGetters(t *testing.T) {
-	ts := time.Date(2024, 1, 15, 10, 0, 0, 0, time.UTC)
-	e := &Entry{
-		Identifier:  "id-1",
-		DisplayName: "My Entry",
-		MediaType:   "application/json",
-		Description: "A test entry",
-		Tags:        []string{"foo", "bar"},
-		URL:         "https://example.com/entry",
-		UpdatedAt:   &ts,
-	}
-
-	if e.GetIdentifier() != "id-1" {
-		t.Errorf("GetIdentifier = %q", e.GetIdentifier())
-	}
-
-	if e.GetDisplayName() != "My Entry" {
-		t.Errorf("GetDisplayName = %q", e.GetDisplayName())
-	}
-
-	if e.GetMediaType() != "application/json" {
-		t.Errorf("GetMediaType = %q", e.GetMediaType())
-	}
-
-	if e.GetDescription() != "A test entry" {
-		t.Errorf("GetDescription = %q", e.GetDescription())
-	}
-
-	if len(e.GetTags()) != 2 {
-		t.Errorf("GetTags len = %d", len(e.GetTags()))
-	}
-
-	if e.GetURL() != "https://example.com/entry" {
-		t.Errorf("GetURL = %q", e.GetURL())
-	}
-
-	if e.GetUpdatedAt() == nil || !e.GetUpdatedAt().Equal(ts) {
-		t.Errorf("GetUpdatedAt = %v", e.GetUpdatedAt())
+	if got := c.Versions("urn:does:not:exist"); got != nil {
+		t.Errorf("Versions(unknown) = %+v, want nil", got)
 	}
 }
 
-func TestPull_Success(t *testing.T) {
-	artifact := []byte(`{"name":"my-agent"}`)
+func TestGetLatest_Semver(t *testing.T) {
+	c := validCatalog(t)
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write(artifact)
-	}))
-	defer srv.Close()
-
-	e := &Entry{
-		Identifier: "test-entry",
-		MediaType:  "application/json",
-		URL:        srv.URL,
+	entry, ok := c.GetLatest(versionedID)
+	if !ok || entry.Version != "2.1.0" {
+		t.Fatalf("GetLatest = %+v, ok=%v, want version 2.1.0", entry, ok)
 	}
 
-	data, err := e.Pull(context.Background())
+	if _, ok := c.GetLatest("urn:does:not:exist"); ok {
+		t.Error("expected miss for unknown identifier")
+	}
+}
+
+func TestGetLatest_FallbackToUpdatedAt(t *testing.T) {
+	// The invalid fixture's "urn:dup" pair is two same-identifier, unversioned
+	// entries (a deliberately invalid shape) that exercise the updatedAt
+	// fallback.
+	c := parseFixture(t, fixture.InvalidJSON)
+
+	entry, ok := c.GetLatest("urn:dup")
+	if !ok || entry.URL != "https://example.com/dup-new" {
+		t.Fatalf("GetLatest (updatedAt fallback) = %+v, ok=%v", entry, ok)
+	}
+}
+
+func TestGetLatest_PrefersSemverOverUnparseable(t *testing.T) {
+	c := validCatalog(t)
+
+	// taggedID has a "1.0.0" entry and a newer (by updatedAt) "latest" entry;
+	// the parseable semver must win over the unparseable tag.
+	entry, ok := c.GetLatest(taggedID)
+	if !ok || entry.Version != "1.0.0" {
+		t.Fatalf("GetLatest should prefer parseable semver, got %+v", entry)
+	}
+}
+
+func TestResolveDisplayName(t *testing.T) {
+	cases := []struct {
+		entry CatalogEntry
+		want  string
+	}{
+		{CatalogEntry{DisplayName: "Weather", Identifier: "urn:air:example.com:mcp:weather"}, "Weather"},
+		{CatalogEntry{Identifier: "urn:air:example.com:mcp:weather"}, "weather"},
+		{CatalogEntry{Identifier: "https://example.com/agents/research"}, "research"},
+		{CatalogEntry{Identifier: "bare"}, "bare"},
+	}
+
+	for _, tc := range cases {
+		if got := tc.entry.ResolveDisplayName(); got != tc.want {
+			t.Errorf("ResolveDisplayName(%+v) = %q, want %q", tc.entry, got, tc.want)
+		}
+	}
+}
+
+func TestSearch(t *testing.T) {
+	c := validCatalog(t)
+
+	cases := []struct {
+		query string
+		want  int
+	}{
+		{"nlp-corpus", 1},
+		{"FINANCE", 4}, // finance-v1 entry plus the three versioned finance agents
+		{"NLP Corpus", 1},
+		{"financial queries", 1},
+		{"dataset", 1},
+		{"urn:example", 7},
+		{"xyzzy-not-found", 0},
+	}
+
+	for _, tc := range cases {
+		if got := len(c.Search(tc.query)); got != tc.want {
+			t.Errorf("Search(%q) = %d results, want %d", tc.query, got, tc.want)
+		}
+	}
+}
+
+func TestSearchByRegex(t *testing.T) {
+	c := validCatalog(t)
+
+	results, err := c.SearchByRegex(`urn:example:(agent|data):.*`)
 	if err != nil {
-		t.Fatalf("Pull error: %v", err)
+		t.Fatalf("SearchByRegex error: %v", err)
 	}
 
-	if string(data) != string(artifact) {
-		t.Errorf("Pull data = %q, want %q", data, artifact)
-	}
-}
-
-func TestPull_Non200(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, "gone", http.StatusGone)
-	}))
-	defer srv.Close()
-
-	e := &Entry{
-		Identifier: "test-entry",
-		MediaType:  "application/json",
-		URL:        srv.URL,
+	if len(results) != 2 {
+		t.Errorf("got %d results, want 2", len(results))
 	}
 
-	_, err := e.Pull(context.Background())
-	if err == nil {
-		t.Fatal("Pull: expected error for non-200 response, got nil")
+	anchored, err := c.SearchByRegex(`^urn:example:model:embedding-v2`)
+	if err != nil {
+		t.Fatalf("SearchByRegex error: %v", err)
+	}
+
+	if len(anchored) != 1 || anchored[0].Identifier != embeddingID {
+		t.Errorf("anchored search unexpected: %+v", anchored)
 	}
 }
 
-func TestPull_CancelledContext(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte("data"))
-	}))
-	defer srv.Close()
+func TestSearchByRegex_InvalidPattern(t *testing.T) {
+	c := validCatalog(t)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
+	if _, err := c.SearchByRegex("[invalid("); err == nil {
+		t.Fatal("expected error for invalid regex, got nil")
+	}
+}
 
-	e := &Entry{
-		Identifier: "test-entry",
-		MediaType:  "application/json",
-		URL:        srv.URL,
+func TestIsNestedCatalog(t *testing.T) {
+	nested := &CatalogEntry{Type: MediaTypeCatalog}
+	if !nested.IsNestedCatalog() {
+		t.Error("expected IsNestedCatalog to be true")
 	}
 
-	_, err := e.Pull(ctx)
-	if err == nil {
-		t.Fatal("Pull: expected error for cancelled context, got nil")
+	leaf := &CatalogEntry{Type: "application/json"}
+	if leaf.IsNestedCatalog() {
+		t.Error("expected IsNestedCatalog to be false")
 	}
 }

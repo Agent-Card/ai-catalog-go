@@ -1,0 +1,26 @@
+{
+  "specVersion": "1.0",
+  "host": {
+    "displayName": "Example Host",
+    "identifier": "did:web:example.com",
+    "trustManifest": {"identity": "did:web:example.com", "signature": "header..signature"}
+  },
+  "entries": [
+    {"identifier": "urn:example:artifact", "displayName": "Artifact",
+     "type": "application/json", "url": "https://example.com/artifact.json",
+     "trustManifest": {
+       "identity": "urn:example:artifact",
+       "signature": "header..signature",
+       "trustSchema": {"identifier": "urn:trust:example", "version": "1.0"},
+       "attestations": [
+         {"type": "publisher-identity", "uri": "https://example.com/p.jwt",
+          "digest": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"}
+       ],
+       "provenance": [
+         {"relation": "publishedFrom", "sourceId": "https://github.com/example/repo",
+          "sourceDigest": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"}
+       ],
+       "metadata": {"zeta": true, "alpha": 1}
+     }}
+  ]
+}
