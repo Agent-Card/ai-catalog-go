@@ -54,6 +54,13 @@ var TrustFindingsJSON []byte
 //go:embed trust_nonuri.json
 var TrustNonURIJSON []byte
 
+// UnboundIdentityJSON pairs a urn:air entry with a trust-manifest identity that
+// carries no trust domain, so the identity cannot bind to the entry's publisher
+// domain. Shared by the trust and validation tests for that case.
+//
+//go:embed unbound_identity.json
+var UnboundIdentityJSON []byte
+
 // TrustCleanJSON is a well-formed trusted catalog that yields no findings; its
 // entry manifest also carries a signature and unsorted metadata for the
 // canonicalization test.

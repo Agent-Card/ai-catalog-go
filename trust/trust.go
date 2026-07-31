@@ -275,17 +275,25 @@ func analyzeEntryManifest(entry *catalog.CatalogEntry, index int) *ManifestRepor
 	var findings []Finding
 
 	// Identity binds to the entry by domain alignment, not exact equality.
-	if aligned, determinable := catalog.IdentityBindsToEntry(
-		entry.Identifier, manifest.Identity); determinable && !aligned {
+	if aligned, applies := catalog.IdentityBindsToEntry(
+		entry.Identifier, manifest.Identity); applies && !aligned {
 		publisherDomain, _ := catalog.PublisherDomain(entry.Identifier)
-		identityDomain, _ := catalog.IdentityDomain(manifest.Identity)
+
+		var message string
+		if identityDomain, ok := catalog.IdentityDomain(manifest.Identity); ok {
+			message = fmt.Sprintf(
+				"trustManifest.identity domain '%s' MUST align with entry identifier publisher domain '%s'",
+				identityDomain, publisherDomain)
+		} else {
+			message = fmt.Sprintf(
+				"trustManifest.identity '%s' MUST carry a trust domain aligned with entry identifier publisher domain '%s'",
+				manifest.Identity, publisherDomain)
+		}
 
 		findings = append(findings, Finding{
 			Severity: SeverityError,
 			Path:     path + ".identity",
-			Message: fmt.Sprintf(
-				"trustManifest.identity domain '%s' MUST align with entry identifier publisher domain '%s'",
-				identityDomain, publisherDomain),
+			Message:  message,
 		})
 	}
 
