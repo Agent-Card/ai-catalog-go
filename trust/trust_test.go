@@ -154,6 +154,17 @@ func TestAnalyzeCatalog_NonURIIdentityWarns(t *testing.T) {
 	}
 }
 
+func TestAnalyzeCatalog_IdentityWithoutTrustDomainFailsBinding(t *testing.T) {
+	report := trust.AnalyzeCatalog(parse(t, fixture.UnboundIdentityJSON))
+
+	want := "trustManifest.identity 'urn:acme:agent:finance' MUST carry a trust domain " +
+		"aligned with entry identifier publisher domain 'acme.com'"
+
+	if !containsFinding(report, want) {
+		t.Errorf("missing expected finding %q, got: %+v", want, report.Findings)
+	}
+}
+
 func TestAnalyzeCatalog_Clean(t *testing.T) {
 	report := trust.AnalyzeCatalog(parse(t, fixture.TrustCleanJSON))
 

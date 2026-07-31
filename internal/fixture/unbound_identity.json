@@ -1,0 +1,8 @@
+{
+  "specVersion": "1.0",
+  "entries": [
+    {"identifier": "urn:air:acme.com:agent:finance", "displayName": "Finance",
+     "type": "application/json", "url": "https://acme.com/finance.json",
+     "trustManifest": {"identity": "urn:acme:agent:finance"}}
+  ]
+}

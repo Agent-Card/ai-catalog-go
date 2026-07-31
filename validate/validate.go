@@ -290,14 +290,19 @@ func (v *validator) validateEntryTrust(entry *catalog.CatalogEntry, path string)
 	}
 
 	// Identity binds to the entry by domain alignment, not exact equality.
-	if aligned, determinable := catalog.IdentityBindsToEntry(
-		entry.Identifier, manifest.Identity); determinable && !aligned {
+	if aligned, applies := catalog.IdentityBindsToEntry(
+		entry.Identifier, manifest.Identity); applies && !aligned {
 		publisherDomain, _ := catalog.PublisherDomain(entry.Identifier)
-		identityDomain, _ := catalog.IdentityDomain(manifest.Identity)
 
-		v.addError(path+".trustManifest.identity", fmt.Sprintf(
-			"trustManifest.identity domain %q does not align with the entry identifier publisher domain %q",
-			identityDomain, publisherDomain))
+		if identityDomain, ok := catalog.IdentityDomain(manifest.Identity); ok {
+			v.addError(path+".trustManifest.identity", fmt.Sprintf(
+				"trustManifest.identity domain %q does not align with the entry identifier publisher domain %q",
+				identityDomain, publisherDomain))
+		} else {
+			v.addError(path+".trustManifest.identity", fmt.Sprintf(
+				"trustManifest.identity %q has no trust domain to align with the entry identifier publisher domain %q",
+				manifest.Identity, publisherDomain))
+		}
 	}
 }
 

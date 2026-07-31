@@ -144,6 +144,17 @@ func TestValidate_RejectsMisalignedTrustIdentityDomain(t *testing.T) {
 	}
 }
 
+func TestValidate_RejectsTrustIdentityWithoutTrustDomain(t *testing.T) {
+	result := validate.Validate(parse(t, fixture.UnboundIdentityJSON))
+
+	want := `trustManifest.identity "urn:acme:agent:finance" has no trust domain to align ` +
+		`with the entry identifier publisher domain "acme.com"`
+
+	if result.IsValid || !hasError(result, want) {
+		t.Errorf("expected unbound trust identity error, got: %+v", result.Errors)
+	}
+}
+
 func TestValidate_AcceptsAlignedNonEqualTrustIdentity(t *testing.T) {
 	// The comprehensive fixture binds urn:air:acme.com:... to did:web:acme.com:
 	// aligned by domain, not equal to the identifier.
