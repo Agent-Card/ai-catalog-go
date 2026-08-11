@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/agntcy/ai-catalog-go-sdk/catalog"
-	"github.com/agntcy/ai-catalog-go-sdk/internal/fixture"
-	"github.com/agntcy/ai-catalog-go-sdk/trust"
+	"github.com/agntcy/ai-catalog-go/catalog"
+	"github.com/agntcy/ai-catalog-go/internal/fixture"
+	"github.com/agntcy/ai-catalog-go/trust"
 )
 
 // SHA-256 of the ASCII bytes "test".

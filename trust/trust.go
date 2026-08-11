@@ -15,7 +15,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/agntcy/ai-catalog-go-sdk/catalog"
+	"github.com/agntcy/ai-catalog-go/catalog"
 )
 
 // Digest-parsing errors. Callers may test for these with errors.Is.

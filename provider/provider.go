@@ -14,7 +14,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/agntcy/ai-catalog-go-sdk/catalog"
+	"github.com/agntcy/ai-catalog-go/catalog"
 )
 
 // maxResponseBytes caps a document read by the default Fetcher.

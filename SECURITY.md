@@ -21,4 +21,4 @@ Participation in security issue coordination processes is at the discretion of t
 ## Security advisories
 
 The project team is committed to transparency in the security issue disclosure
-process. The AI Catalog Go SDK team announces security issues via [project GitHub Release notes](https://github.com/agntcy/ai-catalog-go-sdk/releases).
+process. The AI Catalog Go SDK team announces security issues via [project GitHub Release notes](https://github.com/agntcy/ai-catalog-go/releases).

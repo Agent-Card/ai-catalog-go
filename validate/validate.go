@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/agntcy/ai-catalog-go-sdk/catalog"
+	"github.com/agntcy/ai-catalog-go/catalog"
 )
 
 // ConformanceLevel is the AI Catalog conformance level a document satisfies.

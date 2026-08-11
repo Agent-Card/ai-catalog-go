@@ -1,4 +1,4 @@
-module github.com/agntcy/ai-catalog-go-sdk
+module github.com/agntcy/ai-catalog-go
 
 go 1.26.4
 

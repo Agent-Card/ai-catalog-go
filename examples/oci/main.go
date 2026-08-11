@@ -21,7 +21,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/agntcy/ai-catalog-go-sdk/catalog"
+	"github.com/agntcy/ai-catalog-go/catalog"
 )
 
 const (

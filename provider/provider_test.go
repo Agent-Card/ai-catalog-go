@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/agntcy/ai-catalog-go-sdk/catalog"
-	"github.com/agntcy/ai-catalog-go-sdk/internal/fixture"
+	"github.com/agntcy/ai-catalog-go/catalog"
+	"github.com/agntcy/ai-catalog-go/internal/fixture"
 )
 
 // Identifiers known to exist in the shared fixture.
