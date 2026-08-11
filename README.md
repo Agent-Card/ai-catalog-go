@@ -21,7 +21,7 @@ The repository follows the AI Catalog spec's own split between **normative** con
 ## Installation
 
 ```bash
-go get github.com/agntcy/ai-catalog-go-sdk
+go get github.com/agntcy/ai-catalog-go
 ```
 
 The minimum Go version is declared in [`go.mod`](./go.mod).
@@ -36,7 +36,7 @@ The `provider` package returns a `catalog.Source` — a loader for an AI Catalog
 import (
 	"context"
 
-	"github.com/agntcy/ai-catalog-go-sdk/provider"
+	"github.com/agntcy/ai-catalog-go/provider"
 )
 
 ctx := context.Background()
@@ -106,7 +106,7 @@ name := entry.ResolveDisplayName()
 ### Validate and detect conformance level
 
 ```go
-import "github.com/agntcy/ai-catalog-go-sdk/validate"
+import "github.com/agntcy/ai-catalog-go/validate"
 
 result := validate.Validate(doc)
 if !result.IsValid {
@@ -123,7 +123,7 @@ result, err := validate.Source(ctx, src)
 ### Analyze trust metadata
 
 ```go
-import "github.com/agntcy/ai-catalog-go-sdk/trust"
+import "github.com/agntcy/ai-catalog-go/trust"
 
 report := trust.AnalyzeCatalog(doc)
 for _, f := range report.Findings {

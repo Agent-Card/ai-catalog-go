@@ -7,7 +7,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/agntcy/ai-catalog-go-sdk/catalog"
+	"github.com/agntcy/ai-catalog-go/catalog"
 )
 
 // Source validates the AI Catalog document backing c. It is a convenience

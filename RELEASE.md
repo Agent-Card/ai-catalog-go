@@ -11,7 +11,7 @@ git checkout -b release/v1.0.0
 
 * Modify the `versions.yaml` file to update the version for the module-set.
 ```diff
-  ai-catalog-go-sdk:
+  ai-catalog-go:
 -    version: v0.1.0
 +    version: v1.0.0
 ```
@@ -70,4 +70,4 @@ Please note that the release tag is not necessarily associated with the "release
 
 * Wait until the release workflow is completed successfully.
 
-* Navigate to the [Releases page](https://github.com/agntcy/ai-catalog-go-sdk/releases) and verify the release description as well as the assets listed.
+* Navigate to the [Releases page](https://github.com/agntcy/ai-catalog-go/releases) and verify the release description as well as the assets listed.

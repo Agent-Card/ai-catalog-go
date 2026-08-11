@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/agntcy/ai-catalog-go-sdk/internal/fixture"
+	"github.com/agntcy/ai-catalog-go/internal/fixture"
 )
 
 const (
