@@ -7,7 +7,7 @@ import "encoding/json"
 
 // HostInfo identifies the operator of an AI Catalog.
 type HostInfo struct {
-	DisplayName string `json:"displayName,omitempty"`
+	DisplayName string `json:"displayName"`
 
 	// Identifier is a verifiable host identifier (e.g. a DID or domain name).
 	Identifier string `json:"identifier,omitempty"`
@@ -34,8 +34,8 @@ type Publisher struct {
 // TrustManifest provides verifiable identity, attestation, and provenance
 // metadata for an artifact, sitting alongside it as a peer element.
 type TrustManifest struct {
-	// Identity is the subject identifier; within a CatalogEntry it must match
-	// the entry's Identifier.
+	// Identity is the subject identifier; within a CatalogEntry its trust
+	// domain must align with the entry Identifier's publisher domain.
 	Identity string `json:"identity"`
 
 	IdentityType string           `json:"identityType,omitempty"`
@@ -46,11 +46,41 @@ type TrustManifest struct {
 	PrivacyPolicyURL  string `json:"privacyPolicyUrl,omitempty"`
 	TermsOfServiceURL string `json:"termsOfServiceUrl,omitempty"`
 
+	// Subject binds the manifest to the exact artifact bytes it describes.
+	// Required whenever Signature is present, otherwise the signature could be
+	// replayed onto a different artifact.
+	Subject *Subject `json:"subject,omitempty"`
+
+	// IssuedAt is an RFC 3339 timestamp of when the manifest was issued.
+	// Required whenever Signature is present.
+	IssuedAt string `json:"issuedAt,omitempty"`
+
+	// ExpiresAt is an RFC 3339 timestamp after which the manifest must no
+	// longer be relied upon.
+	ExpiresAt string `json:"expiresAt,omitempty"`
+
 	// Signature is a detached JWS (RFC 7515) over the manifest, using JCS
 	// (RFC 8785) canonicalization.
 	Signature string `json:"signature,omitempty"`
 
-	Metadata map[string]json.RawMessage `json:"metadata,omitempty"`
+	// Extensions holds custom or vendor-specific members. Keys must be a URL
+	// or a reverse-DNS string to keep vendors from colliding.
+	Extensions map[string]json.RawMessage `json:"extensions,omitempty"`
+}
+
+// Subject binds a TrustManifest to the artifact it describes, so a signature
+// cannot be replayed onto different content.
+type Subject struct {
+	// Type is the media type of the bound artifact; within a CatalogEntry it
+	// must equal the entry's Type.
+	Type string `json:"type"`
+
+	// Digest is the artifact digest as "algorithm:hex" (SHA-256 or stronger).
+	Digest string `json:"digest"`
+
+	// URL locates the bound artifact; when set within a CatalogEntry it must
+	// equal the entry's URL.
+	URL string `json:"url,omitempty"`
 }
 
 // TrustSchema describes the trust framework applied to an artifact.

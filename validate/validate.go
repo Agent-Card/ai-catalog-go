@@ -9,6 +9,10 @@ package validate
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
+	"net/url"
+	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -27,8 +31,9 @@ const (
 	// Discoverable requires a valid document with a host.
 	Discoverable
 
-	// Trusted requires a valid Discoverable document plus a trust manifest on
-	// the host or on at least one entry.
+	// Trusted requires a valid Discoverable document plus at least one trust
+	// manifest, where every manifest present carries a signature, a subject,
+	// and an issuedAt timestamp.
 	Trusted
 )
 
@@ -82,7 +87,8 @@ const specVersionParts = 2
 // returns a structured result including the detected conformance level.
 func Validate(c *catalog.AICatalog) Result {
 	v := &validator{}
-	v.validateCatalog(c, "catalog", 1)
+	// The root sits at depth 0, so maxNestingDepth nested entries are allowed.
+	v.validateCatalog(c, "catalog", 0)
 
 	return Result{
 		IsValid:          len(v.errors) == 0,
@@ -111,27 +117,51 @@ func detectLevel(c *catalog.AICatalog, errs []Diagnostic) ConformanceLevel {
 		return Minimal
 	}
 
-	if c.Host.TrustManifest != nil || anyEntryHasTrustManifest(c.Entries) {
+	if isTrusted(c) {
 		return Trusted
 	}
 
 	return Discoverable
 }
 
-func anyEntryHasTrustManifest(entries []catalog.CatalogEntry) bool {
-	for i := range entries {
-		if entries[i].TrustManifest != nil {
-			return true
+// isTrusted requires at least one trust manifest and every manifest present to
+// be signed and bound to its artifact. An unsigned manifest is an unverifiable
+// claim, so one anywhere in the document holds the catalog at Discoverable.
+func isTrusted(c *catalog.AICatalog) bool {
+	manifests := collectTrustManifests(c)
+	if len(manifests) == 0 {
+		return false
+	}
+
+	for _, manifest := range manifests {
+		if manifest.Signature == "" || manifest.Subject == nil || manifest.IssuedAt == "" {
+			return false
 		}
 	}
 
-	return false
+	return true
+}
+
+func collectTrustManifests(c *catalog.AICatalog) []*catalog.TrustManifest {
+	var manifests []*catalog.TrustManifest
+
+	if c.Host != nil && c.Host.TrustManifest != nil {
+		manifests = append(manifests, c.Host.TrustManifest)
+	}
+
+	for i := range c.Entries {
+		if manifest := c.Entries[i].TrustManifest; manifest != nil {
+			manifests = append(manifests, manifest)
+		}
+	}
+
+	return manifests
 }
 
 func (v *validator) validateCatalog(c *catalog.AICatalog, path string, depth int) {
 	v.validateSpecVersion(c.SpecVersion, path+".specVersion")
 	v.validateHost(c.Host, path+".host")
-	v.validateMetadataKeys(c.Metadata, path+".metadata")
+	v.validateExtensionKeys(c.Extensions, path+".extensions")
 	v.validateEntryUniqueness(c.Entries, path)
 
 	for i := range c.Entries {
@@ -139,8 +169,8 @@ func (v *validator) validateCatalog(c *catalog.AICatalog, path string, depth int
 	}
 }
 
-// validateHost enforces the required Host Info members: displayName, and
-// trustManifest.identity when a host trust manifest is present.
+// validateHost enforces the required Host Info members: displayName, and the
+// trust manifest rules when a host trust manifest is present.
 func (v *validator) validateHost(host *catalog.HostInfo, path string) {
 	if host == nil {
 		return
@@ -150,14 +180,7 @@ func (v *validator) validateHost(host *catalog.HostInfo, path string) {
 		v.addError(path+".displayName", "host.displayName is required and must not be empty")
 	}
 
-	if host.TrustManifest != nil {
-		v.validateMetadataKeys(host.TrustManifest.Metadata, path+".trustManifest.metadata")
-
-		if host.TrustManifest.Identity == "" {
-			v.addError(path+".trustManifest.identity",
-				"trustManifest.identity is required and must not be empty")
-		}
-	}
+	v.validateTrustManifest(host.TrustManifest, path+".trustManifest")
 }
 
 // idVersion is a composite key used to detect duplicate (identifier, version)
@@ -214,7 +237,7 @@ func (v *validator) validateEntry(entry *catalog.CatalogEntry, path string, dept
 	v.validateRequiredEntryFields(entry, path)
 	v.validateArtifactSource(entry, path)
 	v.validateUpdatedAt(entry, path)
-	v.validateMetadataKeys(entry.Metadata, path+".metadata")
+	v.validateExtensionKeys(entry.Extensions, path+".extensions")
 	v.validatePublisher(entry.Publisher, path+".publisher")
 	v.validateEntryTrust(entry, path)
 	v.validateNestedCatalog(entry, path, depth)
@@ -274,40 +297,162 @@ func (v *validator) validateUpdatedAt(entry *catalog.CatalogEntry, path string) 
 	}
 }
 
+// validateTrustManifest checks the rules that hold for a trust manifest
+// wherever it appears in a document.
+func (v *validator) validateTrustManifest(manifest *catalog.TrustManifest, path string) {
+	if manifest == nil {
+		return
+	}
+
+	v.validateExtensionKeys(manifest.Extensions, path+".extensions")
+
+	if manifest.Identity == "" {
+		v.addError(path+".identity", "trustManifest.identity is required and must not be empty")
+	}
+
+	// An empty manifest advertises trust metadata that is not there; the spec
+	// requires omitting it instead.
+	if !isSubstantive(manifest) {
+		v.addError(path, "trustManifest must carry at least one substantive member "+
+			"(a signature with its subject and issuedAt, a non-empty attestations or "+
+			"provenance array, or a trustSchema) and must otherwise be omitted entirely")
+	}
+
+	v.validateSignedManifestMembers(manifest, path)
+	v.validateManifestTimestamps(manifest, path)
+	v.validateSubject(manifest.Subject, path+".subject")
+}
+
+// isSubstantive reports whether a manifest carries verifiable trust evidence.
+// A subject and issuedAt count only alongside a signature; unsigned, whoever
+// controls the document can set them at will.
+func isSubstantive(manifest *catalog.TrustManifest) bool {
+	signed := manifest.Signature != "" && manifest.Subject != nil && manifest.IssuedAt != ""
+
+	return signed ||
+		len(manifest.Attestations) > 0 ||
+		len(manifest.Provenance) > 0 ||
+		manifest.TrustSchema != nil
+}
+
+// validateSignedManifestMembers enforces the members a signature must commit
+// to. Without them the signature covers no artifact and can be replayed onto
+// unrelated content.
+func (v *validator) validateSignedManifestMembers(manifest *catalog.TrustManifest, path string) {
+	if manifest.Signature == "" {
+		return
+	}
+
+	if manifest.Subject == nil {
+		v.addError(path+".subject",
+			"a trustManifest carrying a signature must include a subject")
+	}
+
+	if manifest.IssuedAt == "" {
+		v.addError(path+".issuedAt",
+			"a trustManifest carrying a signature must include issuedAt")
+	}
+}
+
+func (v *validator) validateManifestTimestamps(manifest *catalog.TrustManifest, path string) {
+	if manifest.IssuedAt != "" {
+		if _, err := time.Parse(time.RFC3339, manifest.IssuedAt); err != nil {
+			v.addError(path+".issuedAt", fmt.Sprintf(
+				"issuedAt is not a valid RFC 3339 datetime: %q", manifest.IssuedAt))
+		}
+	}
+
+	if manifest.ExpiresAt == "" {
+		return
+	}
+
+	expiresAt, err := time.Parse(time.RFC3339, manifest.ExpiresAt)
+	if err != nil {
+		v.addError(path+".expiresAt", fmt.Sprintf(
+			"expiresAt is not a valid RFC 3339 datetime: %q", manifest.ExpiresAt))
+
+		return
+	}
+
+	if expiresAt.Before(time.Now()) {
+		v.addWarning(path+".expiresAt", fmt.Sprintf(
+			"trustManifest expired at %q and SHOULD be rejected", manifest.ExpiresAt))
+	}
+}
+
+func (v *validator) validateSubject(subject *catalog.Subject, path string) {
+	if subject == nil {
+		return
+	}
+
+	if subject.Type == "" {
+		v.addError(path+".type", "subject.type is required and must not be empty")
+	}
+
+	if subject.Digest == "" {
+		v.addError(path+".digest", "subject.digest is required and must not be empty")
+	}
+}
+
+// validateSubjectBinding enforces that a subject restates the entry's own type
+// and url. That duplication is what pulls those values into the signed payload;
+// a mismatch means the entry points at a different artifact than was signed.
+func (v *validator) validateSubjectBinding(entry *catalog.CatalogEntry, path string) {
+	subject := entry.TrustManifest.Subject
+	if subject == nil {
+		return
+	}
+
+	if subject.Type != "" && entry.Type != "" && subject.Type != entry.Type {
+		v.addError(path+".subject.type", fmt.Sprintf(
+			"subject.type %q must equal the entry type %q", subject.Type, entry.Type))
+	}
+
+	if subject.URL != "" && subject.URL != entry.URL {
+		v.addError(path+".subject.url", fmt.Sprintf(
+			"subject.url %q must equal the entry url %q", subject.URL, entry.URL))
+	}
+}
+
 func (v *validator) validateEntryTrust(entry *catalog.CatalogEntry, path string) {
 	manifest := entry.TrustManifest
 	if manifest == nil {
 		return
 	}
 
-	v.validateMetadataKeys(manifest.Metadata, path+".trustManifest.metadata")
+	v.validateTrustManifest(manifest, path+".trustManifest")
+	v.validateSubjectBinding(entry, path+".trustManifest")
+	v.validateIdentityBinding(entry, path+".trustManifest")
+}
 
-	if manifest.Identity == "" {
-		v.addError(path+".trustManifest.identity",
-			"trustManifest.identity is required and must not be empty")
+// validateIdentityBinding checks the manifest identity against the entry it
+// describes. The two bind by domain alignment rather than exact equality: a
+// did:web identity may vouch for a urn:air identifier from the same publisher.
+func (v *validator) validateIdentityBinding(entry *catalog.CatalogEntry, path string) {
+	identity := entry.TrustManifest.Identity
+
+	aligned, applies := catalog.IdentityBindsToEntry(entry.Identifier, identity)
+	if identity == "" || !applies || aligned {
+		return
+	}
+
+	publisherDomain, _ := catalog.PublisherDomain(entry.Identifier)
+
+	if identityDomain, ok := catalog.IdentityDomain(identity); ok {
+		v.addError(path+".identity", fmt.Sprintf(
+			"trustManifest.identity domain %q does not align with the entry identifier publisher domain %q",
+			identityDomain, publisherDomain))
 
 		return
 	}
 
-	// Identity binds to the entry by domain alignment, not exact equality.
-	if aligned, applies := catalog.IdentityBindsToEntry(
-		entry.Identifier, manifest.Identity); applies && !aligned {
-		publisherDomain, _ := catalog.PublisherDomain(entry.Identifier)
-
-		if identityDomain, ok := catalog.IdentityDomain(manifest.Identity); ok {
-			v.addError(path+".trustManifest.identity", fmt.Sprintf(
-				"trustManifest.identity domain %q does not align with the entry identifier publisher domain %q",
-				identityDomain, publisherDomain))
-		} else {
-			v.addError(path+".trustManifest.identity", fmt.Sprintf(
-				"trustManifest.identity %q has no trust domain to align with the entry identifier publisher domain %q",
-				manifest.Identity, publisherDomain))
-		}
-	}
+	v.addError(path+".identity", fmt.Sprintf(
+		"trustManifest.identity %q has no trust domain to align with the entry identifier publisher domain %q",
+		identity, publisherDomain))
 }
 
 func (v *validator) validateNestedCatalog(entry *catalog.CatalogEntry, path string, depth int) {
-	if entry.Type != catalog.MediaTypeCatalog {
+	if !entry.IsNestedCatalog() {
 		return
 	}
 
@@ -333,12 +478,31 @@ func (v *validator) validateNestedCatalog(entry *catalog.CatalogEntry, path stri
 	v.validateCatalog(nested, path+".data", depth+1)
 }
 
-func (v *validator) validateMetadataKeys(metadata map[string]json.RawMessage, path string) {
-	for key := range metadata {
-		if key == "" {
-			v.addError(path, "metadata keys must be non-empty strings")
+// reverseDNSKey matches a reverse-DNS extension key such as
+// "com.example.confidenceScore": dot-separated labels of alphanumerics and
+// inner hyphens.
+var reverseDNSKey = regexp.MustCompile(
+	`^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$`)
+
+// validateExtensionKeys requires every key to be a URL or a reverse-DNS string,
+// the namespacing rule that keeps independent publishers from colliding.
+func (v *validator) validateExtensionKeys(extensions map[string]json.RawMessage, path string) {
+	for _, key := range slices.Sorted(maps.Keys(extensions)) {
+		if isExtensionKey(key) {
+			continue
 		}
+
+		v.addError(path, fmt.Sprintf(
+			"extension key %q must be a valid URL or a reverse-DNS string", key))
 	}
+}
+
+func isExtensionKey(key string) bool {
+	if parsed, err := url.Parse(key); err == nil && parsed.Scheme != "" && parsed.Host != "" {
+		return true
+	}
+
+	return reverseDNSKey.MatchString(key)
 }
 
 func (v *validator) validateSpecVersion(specVersion, path string) {

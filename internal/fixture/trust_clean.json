@@ -1,16 +1,32 @@
 {
   "specVersion": "1.0",
+  "signature": "eyJhbGciOiJFUzI1NiJ9..Y2F0YWxvZy1zaWduYXR1cmU",
   "host": {
     "displayName": "Example Host",
     "identifier": "did:web:example.com",
-    "trustManifest": {"identity": "did:web:example.com", "signature": "header..signature"}
+    "trustManifest": {
+      "identity": "did:web:example.com",
+      "subject": {
+        "type": "application/ai-catalog+json",
+        "digest": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+      },
+      "issuedAt": "2026-03-15T10:00:00Z",
+      "expiresAt": "2126-03-15T10:00:00Z",
+      "signature": "eyJhbGciOiJFUzI1NiJ9..c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+    }
   },
   "entries": [
     {"identifier": "urn:example:artifact", "displayName": "Artifact",
      "type": "application/json", "url": "https://example.com/artifact.json",
      "trustManifest": {
        "identity": "urn:example:artifact",
-       "signature": "header..signature",
+       "subject": {
+         "type": "application/json",
+         "digest": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+         "url": "https://example.com/artifact.json"
+       },
+       "issuedAt": "2026-03-15T10:00:00Z",
+       "signature": "eyJhbGciOiJFUzI1NiJ9..c2lnbmF0dXJlLXBsYWNlaG9sZGVy",
        "trustSchema": {"identifier": "urn:trust:example", "version": "1.0"},
        "attestations": [
          {"type": "publisher-identity", "uri": "https://example.com/p.jwt",
@@ -20,7 +36,7 @@
          {"relation": "publishedFrom", "sourceId": "https://github.com/example/repo",
           "sourceDigest": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"}
        ],
-       "metadata": {"zeta": true, "alpha": 1}
+       "extensions": {"com.example.zeta": true, "com.example.alpha": 1}
      }}
   ]
 }

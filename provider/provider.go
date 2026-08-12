@@ -1,17 +1,18 @@
 // Copyright AGNTCY Contributors (https://github.com/agntcy)
 // SPDX-License-Identifier: Apache-2.0
 
-// Package provider offers built-in ways to obtain a catalog.Source from a
-// concrete source — a local JSON file (JSON) or an HTTP endpoint (Web). Each
-// returns the document as-is; nested catalog entries are left unresolved for the
-// caller to follow as needed.
+// Package provider offers built-in ways to obtain a catalog.Source: a local
+// JSON file (JSON) or an HTTP endpoint (Web). Both return the document as
+// served; nested catalog entries are left unresolved for the caller to follow.
 package provider
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/agntcy/ai-catalog-go/catalog"
@@ -20,16 +21,16 @@ import (
 // maxResponseBytes caps a document read by the default Fetcher.
 const maxResponseBytes = 10 << 20 // 10 MiB
 
-// defaultHTTPTimeout bounds a fetch by the default client, so a slow or
-// unresponsive server cannot stall the caller indefinitely.
+// defaultHTTPTimeout bounds a fetch so an unresponsive server cannot stall the
+// caller indefinitely.
 const defaultHTTPTimeout = 60 * time.Second
 
 // defaultHTTPClient is used when no *http.Client is configured. Unlike
 // http.DefaultClient it sets a timeout.
 var defaultHTTPClient = &http.Client{Timeout: defaultHTTPTimeout}
 
-// Fetcher retrieves the raw bytes of a document at url, abstracting the
-// transport so callers can plug in custom clients, auth, or caching.
+// Fetcher retrieves the raw bytes of the document at url. Implement it to plug
+// in a custom client, authentication, or caching.
 type Fetcher interface {
 	Fetch(ctx context.Context, url string) ([]byte, error)
 }
@@ -101,21 +102,20 @@ func (h *httpFetcher) Fetch(ctx context.Context, url string) ([]byte, error) {
 	return data, nil
 }
 
-// resolvedSource is a catalog.Source backed by the serialized bytes of a
-// validated document. Each Load re-parses them, so every caller receives an
-// independent document it fully owns. Safe for concurrent use.
+// resolvedSource is a catalog.Source holding the document exactly as served.
+// Load re-parses those bytes on every call, so each caller owns its document and
+// the retained bytes stay valid for signature verification. Safe for concurrent
+// use.
 type resolvedSource struct {
 	data []byte
 }
 
-var _ catalog.Source = (*resolvedSource)(nil)
+var _ catalog.RawSource = (*resolvedSource)(nil)
 
-// newResolvedSource captures c as bytes so that later Loads can hand back
-// independent copies.
-func newResolvedSource(c *catalog.AICatalog) (*resolvedSource, error) {
-	data, err := c.ToJSON()
-	if err != nil {
-		return nil, fmt.Errorf("serialize catalog: %w", err)
+// newResolvedSource retains data once it is known to parse.
+func newResolvedSource(data []byte) (*resolvedSource, error) {
+	if _, err := catalog.Parse(data); err != nil {
+		return nil, fmt.Errorf("parse catalog: %w", err)
 	}
 
 	return &resolvedSource{data: data}, nil
@@ -123,12 +123,17 @@ func newResolvedSource(c *catalog.AICatalog) (*resolvedSource, error) {
 
 // JSON creates a catalog.Source from a local AI Catalog JSON file.
 func JSON(path string) (catalog.Source, error) {
-	c, err := catalog.ParseFile(path)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read catalog file: %w", err)
+	}
+
+	source, err := newResolvedSource(data)
 	if err != nil {
 		return nil, fmt.Errorf("load catalog: %w", err)
 	}
 
-	return newResolvedSource(c)
+	return source, nil
 }
 
 // Web creates a catalog.Source from an AI Catalog served at url, retrieved via
@@ -141,12 +146,12 @@ func Web(ctx context.Context, url string, opts ...Option) (catalog.Source, error
 		return nil, fmt.Errorf("load catalog: %w", err)
 	}
 
-	c, err := catalog.Parse(data)
+	source, err := newResolvedSource(data)
 	if err != nil {
-		return nil, fmt.Errorf("parse catalog: %w", err)
+		return nil, fmt.Errorf("load catalog: %w", err)
 	}
 
-	return newResolvedSource(c)
+	return source, nil
 }
 
 func (p *resolvedSource) Load(ctx context.Context) (*catalog.AICatalog, error) {
@@ -160,4 +165,12 @@ func (p *resolvedSource) Load(ctx context.Context) (*catalog.AICatalog, error) {
 	}
 
 	return doc, nil
+}
+
+func (p *resolvedSource) Raw(ctx context.Context) ([]byte, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("read catalog: %w", err)
+	}
+
+	return bytes.Clone(p.data), nil
 }

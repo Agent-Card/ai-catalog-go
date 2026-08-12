@@ -1,73 +1,41 @@
 # Release
 
-This document outlines the process for creating a new release for AI Catalog Go SDK using the [Go MultiMod Releaser](https://github.com/open-telemetry/opentelemetry-go-build-tools/tree/main/multimod). All code block examples provided below correspond to an update to version `v1.0.0`, please update accordingly.
+`github.com/agntcy/ai-catalog-go` is a single Go module. A release is cut by pushing a semver tag — there is no version string to bump in the source tree, and consumers fetch the module through the Go module proxy rather than downloading artifacts.
 
-## 1. Update the New Release Version
+Examples below use `v1.0.0`; substitute the version being released.
 
-* Create a new branch for the release version update.
-```sh
-git checkout -b release/v1.0.0
-```
+## 1. Verify main
 
-* Modify the `versions.yaml` file to update the version for the module-set.
-```diff
-  ai-catalog-go:
--    version: v0.1.0
-+    version: v1.0.0
-```
+Check out the commit to be released and confirm it is green.
 
-* Commit the changes with a suitable message.
-```sh
-git add versions.yaml
-git commit -s -m "release: update module set to version v1.0.0"
-```
-
-* Run the version verification command to check for any issues.
-
-> [!NOTE]
-> If you use `go.work` and `go.work.sum` files in the project, temporarily remove/rename them so it won't interfere with this step.
-
-```sh
-task release:verify
-```
-
-## 2. Bump All Dependencies to the New Release Version
-
-* Run the following command to update all `go.mod` files to the new release version.
-```sh
-task release:prepare
-```
-
-> [!NOTE]
-> If this command fails with `failed: working tree not clean`, please run `git stash --all` and retry.
-
-* Review the changes made in the last commit to ensure correctness.
-
-* Push the branch to the GitHub repository.
-```sh
-git push origin release/v1.0.0
-```
-
-* Create a pull request for these changes with a title like "release: prepare version v1.0.0".
-
-## 3. Create and Push Tags
-
-* After the pull request is approved and merged, update your local main branch.
 ```sh
 git checkout main
 git pull origin main
+task test
+task lint
+task license
 ```
 
-* To trigger the release workflow, create and push to the repository a release tag for the last commit.
+## 2. Create and push the tag
+
 ```sh
-git tag -a v1.0.0
+git tag -a v1.0.0 -m "v1.0.0"
 git push origin v1.0.0
 ```
 
-Please note that the release tag is not necessarily associated with the "release: prepare version v1.0.0" commit. For example, if any bug fixes were required after this commit, they can be merged and included in the release.
+Pushing a `v*.*.*` tag triggers the [release workflow](.github/workflows/release.yaml), which creates a GitHub Release with generated notes.
 
-## 4. Verify Release
+> [!IMPORTANT]
+> Published versions cannot be retracted. The Go module proxy caches a version permanently the first time it is fetched, so deleting or moving a tag does not unpublish it. If a release is broken, tag a new patch version.
 
-* Wait until the release workflow is completed successfully.
+## 3. Verify the release
 
-* Navigate to the [Releases page](https://github.com/agntcy/ai-catalog-go/releases) and verify the release description as well as the assets listed.
+* Confirm the release workflow completed successfully.
+* Check the [Releases page](https://github.com/agntcy/ai-catalog-go/releases) for the new entry and its generated notes. The release carries no build assets.
+* Confirm the version resolves through the proxy:
+
+```sh
+GOPROXY=proxy.golang.org go list -m github.com/agntcy/ai-catalog-go@v1.0.0
+```
+
+Documentation for the new version appears on [pkg.go.dev](https://pkg.go.dev/github.com/agntcy/ai-catalog-go) shortly after the first fetch.

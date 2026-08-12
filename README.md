@@ -5,9 +5,9 @@ SPDX-License-Identifier: Apache-2.0
 
 # AI Catalog Go SDK
 
-A Go toolkit for consuming, validating, and analyzing [AI Catalog](https://agent-card.github.io/ai-catalog/) documents — the typed, nestable JSON format for making heterogeneous AI artifacts (MCP servers, A2A agents, datasets, model cards, nested catalogs, …) discoverable.
+A Go toolkit for consuming, validating, and analyzing [AI Catalog](https://ai-catalog.io/) documents — the typed, nestable JSON format for making heterogeneous AI artifacts (MCP servers, A2A agents, datasets, model cards, nested catalogs, …) discoverable.
 
-The SDK is a faithful implementation of the [AI Catalog specification](https://agent-card.github.io/ai-catalog/spec/).
+The SDK is a faithful implementation of the [AI Catalog specification](https://ai-catalog.io/spec/).
 
 ## Scope
 
@@ -15,7 +15,7 @@ The repository follows the AI Catalog spec's own split between **normative** con
 
 - **Normative** — a faithful implementation of the spec and the stable, supported API: the document/entry types, parsing, and querying (`catalog`); conformance validation (`validate`); and trust-manifest analysis and canonicalization (`trust`). For convenience, `catalog` also adds lookups the spec does not require (e.g. `GetByTag`, `GetByPublisher`, `SearchByRegex`) on the spec-defined types.
 - **Non-normative** — code the spec does not define:
-  - `provider` (and the `catalog.Source` interface) — a supported convenience for loading a catalog from a file, an HTTP endpoint, or a well-known URI.
+  - `provider` (and the `catalog.Source` interface) — a supported convenience for loading a catalog from a local file or an HTTP endpoint.
   - [`examples/`](./examples) — informative, spec-adjacent samples such as packaging a catalog as an OCI artifact (the spec only describes an informative "mapping to OCI"). Reference code to copy and adapt, not part of the supported API.
 
 ## Installation
@@ -36,6 +36,7 @@ The `provider` package returns a `catalog.Source` — a loader for an AI Catalog
 import (
 	"context"
 
+	"github.com/agntcy/ai-catalog-go/catalog"
 	"github.com/agntcy/ai-catalog-go/provider"
 )
 
@@ -57,7 +58,7 @@ If you already hold a parsed `*catalog.AICatalog`, you don't need a `Source` —
 
 ### Query entries
 
-`Source` has a single method, `Load`, which returns the whole catalog in memory as a `*catalog.AICatalog`. Query it with the document's methods — which cover the resolved nested entries folded in by the loader:
+`Source` has a single method, `Load`, which returns the whole catalog in memory as a `*catalog.AICatalog`. Query it with the document's methods, which cover the entries of that document — follow any nested catalog entry yourself to query its contents:
 
 ```go
 doc, err := src.Load(ctx)
@@ -135,6 +136,17 @@ ok, err := trust.VerifyDigest("sha256:9f86d0...", data)
 
 // Canonicalize a manifest (JCS, RFC 8785) prior to signing/verification:
 canonical, err := trust.CanonicalizeTrustManifest(entry.TrustManifest)
+```
+
+A signature covers the document as published, so verify against the original bytes rather than a re-serialized document — otherwise any member this SDK does not model drops out of the payload and the signature will not match. The built-in providers keep those bytes and expose them through `catalog.RawSource`:
+
+```go
+if rawSource, ok := src.(catalog.RawSource); ok {
+	raw, err := rawSource.Raw(ctx)
+
+	// Strips the top-level "signature" and canonicalizes the rest:
+	payload, err := trust.CanonicalizeForSignature(raw)
+}
 ```
 
 ### Package as an OCI artifact

@@ -1,69 +1,57 @@
 // Copyright AGNTCY Contributors (https://github.com/agntcy)
 // SPDX-License-Identifier: Apache-2.0
 
-// Package fixture holds a small set of AI Catalog documents shared across the
-// SDK's tests, so packages do not each carry their own inline JSON. A single
-// document is reused by many tests; only genuinely distinct shapes get their
-// own file.
+// Package fixture holds the AI Catalog documents shared across the SDK's tests.
 package fixture
 
 import _ "embed"
 
-// CatalogJSON is a comprehensive, spec-valid catalog (Trusted conformance). It
-// mixes entry types, tags, publishers, multiple versions of one identifier, a
-// trust manifest, and a nested catalog, and backs the parsing/query tests as
-// well as the valid-nested and aligned-trust validation cases.
+// CatalogJSON is the comprehensive fixture: Trusted conformance, mixed entry
+// types, multiple versions of one identifier, and a nested catalog.
 //
 //go:embed catalog.json
 var CatalogJSON []byte
 
-// MinimalJSON is a valid, hostless catalog (Minimal conformance).
-//
 //go:embed minimal.json
 var MinimalJSON []byte
 
-// DiscoverableJSON is a valid catalog with a host but no trust manifest
-// (Discoverable conformance).
-//
 //go:embed discoverable.json
 var DiscoverableJSON []byte
 
-// InvalidJSON is a single catalog that deliberately packs many independent
-// validation violations (url+data, missing payload, duplicate identifier,
-// duplicate versioned pair, mixed versioning, misaligned trust domain, missing
-// required fields, bad updatedAt, empty metadata keys, invalid nested catalog),
-// so each negative validation test can assert its own error against it. The
-// "urn:dup" pair also exercises GetLatest's updatedAt fallback.
+// InvalidJSON packs one instance of every validation violation the SDK reports.
 //
 //go:embed invalid.json
 var InvalidJSON []byte
 
-// NestedDeepJSON nests catalogs beyond the recommended depth limit.
+// NestedMaxJSON nests exactly to the depth limit; NestedDeepJSON one beyond it.
 //
+//go:embed nested_max.json
+var NestedMaxJSON []byte
+
 //go:embed nested_deep.json
 var NestedDeepJSON []byte
 
-// TrustFindingsJSON carries host- and entry-level trust manifests crafted to
-// trigger every trust analysis finding.
+//go:embed unsigned_trust.json
+var UnsignedTrustJSON []byte
+
+// TrustFindingsJSON triggers every trust analysis finding.
 //
 //go:embed trust_findings.json
 var TrustFindingsJSON []byte
 
-// TrustNonURIJSON has an entry trust manifest with a non-URI identity.
-//
 //go:embed trust_nonuri.json
 var TrustNonURIJSON []byte
 
-// UnboundIdentityJSON pairs a urn:air entry with a trust-manifest identity that
-// carries no trust domain, so the identity cannot bind to the entry's publisher
-// domain. Shared by the trust and validation tests for that case.
+// UnboundIdentityJSON has an entry identity carrying no trust domain to bind.
 //
 //go:embed unbound_identity.json
 var UnboundIdentityJSON []byte
 
-// TrustCleanJSON is a well-formed trusted catalog that yields no findings; its
-// entry manifest also carries a signature and unsorted metadata for the
-// canonicalization test.
+// TrustCleanJSON is trusted and yields no findings; its manifest carries
+// unsorted extensions for the canonicalization test.
 //
 //go:embed trust_clean.json
 var TrustCleanJSON []byte
+
+//go:embed weak_signature.json
+var WeakSignatureJSON []byte

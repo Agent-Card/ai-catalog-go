@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package catalog provides types and helpers for the AI Catalog specification
-// (https://agent-card.github.io/ai-catalog/): parsing, serializing, searching,
-// and navigating AI Catalog documents.
+// (https://ai-catalog.io/spec/): parsing, serializing, searching, and
+// navigating AI Catalog documents.
 package catalog
 
 import (
@@ -36,8 +36,13 @@ type AICatalog struct {
 	// Entries are the catalog entries. May be empty.
 	Entries []CatalogEntry `json:"entries"`
 
-	// Metadata holds custom or vendor-specific metadata.
-	Metadata map[string]json.RawMessage `json:"metadata,omitempty"`
+	// Signature is a detached JWS (RFC 7515) over the JCS-canonicalized
+	// document with this member removed, covering the catalog as a whole.
+	Signature string `json:"signature,omitempty"`
+
+	// Extensions holds custom or vendor-specific members. Keys must be a URL
+	// or a reverse-DNS string to keep vendors from colliding.
+	Extensions map[string]json.RawMessage `json:"extensions,omitempty"`
 }
 
 // MarshalJSON serializes the catalog, emitting the required "entries" member as

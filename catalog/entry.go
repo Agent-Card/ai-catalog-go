@@ -33,13 +33,16 @@ type CatalogEntry struct {
 
 	Publisher *Publisher `json:"publisher,omitempty"`
 
-	// TrustManifest.Identity must match Identifier when present.
+	// TrustManifest.Identity must align with Identifier's publisher domain when
+	// present.
 	TrustManifest *TrustManifest `json:"trustManifest,omitempty"`
 
 	// UpdatedAt is an RFC 3339 timestamp of the last modification.
 	UpdatedAt string `json:"updatedAt,omitempty"`
 
-	Metadata map[string]json.RawMessage `json:"metadata,omitempty"`
+	// Extensions holds custom or vendor-specific members. Keys must be a URL
+	// or a reverse-DNS string to keep vendors from colliding.
+	Extensions map[string]json.RawMessage `json:"extensions,omitempty"`
 }
 
 // IsNestedCatalog reports whether the entry's Type marks it as a nested catalog.

@@ -4,6 +4,9 @@
 package validate_test
 
 import (
+	"context"
+	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -81,8 +84,8 @@ func TestValidate_HostIsDiscoverable(t *testing.T) {
 	}
 }
 
-func TestValidate_TrustManifestIsTrusted(t *testing.T) {
-	// The comprehensive fixture carries a trust manifest, so it is Trusted.
+func TestValidate_SignedTrustManifestIsTrusted(t *testing.T) {
+	// The comprehensive fixture carries a signed, subject-bound manifest.
 	result := validate.Validate(parse(t, fixture.CatalogJSON))
 
 	if !result.IsValid {
@@ -91,6 +94,20 @@ func TestValidate_TrustManifestIsTrusted(t *testing.T) {
 
 	if result.ConformanceLevel != validate.Trusted {
 		t.Errorf("level = %v, want Trusted", result.ConformanceLevel)
+	}
+}
+
+func TestValidate_UnsignedTrustManifestIsOnlyDiscoverable(t *testing.T) {
+	// A manifest that is not signed and bound to its artifact cannot reach
+	// Trusted.
+	result := validate.Validate(parse(t, fixture.UnsignedTrustJSON))
+
+	if !result.IsValid {
+		t.Fatalf("expected valid, errors: %+v", result.Errors)
+	}
+
+	if result.ConformanceLevel != validate.Discoverable {
+		t.Errorf("level = %v, want Discoverable", result.ConformanceLevel)
 	}
 }
 
@@ -200,19 +217,77 @@ func TestValidate_InvalidUpdatedAtAndNonURIWarning(t *testing.T) {
 	}
 }
 
-func TestValidate_RejectsEmptyMetadataKeys(t *testing.T) {
+func TestValidate_RejectsMalformedExtensionKeys(t *testing.T) {
 	result := validate.Validate(parse(t, fixture.InvalidJSON))
 
-	count := 0
+	// The fixture carries one bad key on the catalog, one on an entry, and one
+	// on a trust manifest.
+	wants := []string{`extension key "" must be`, `"not a namespace" must be`, `"nodots" must be`}
 
-	for _, d := range result.Errors {
-		if strings.Contains(d.Message, "metadata keys must be non-empty strings") {
-			count++
+	for _, want := range wants {
+		if !hasError(result, want) {
+			t.Errorf("expected extension key error containing %q, got: %+v", want, result.Errors)
 		}
 	}
+}
 
-	if count != 3 {
-		t.Errorf("expected 3 empty-metadata-key errors, got %d: %+v", count, result.Errors)
+func TestValidate_AcceptsURLAndReverseDNSExtensionKeys(t *testing.T) {
+	// The comprehensive fixture carries one key of each accepted form.
+	result := validate.Validate(parse(t, fixture.CatalogJSON))
+
+	if hasError(result, "extension key") {
+		t.Errorf("expected well-formed extension keys to be accepted, got: %+v", result.Errors)
+	}
+}
+
+func TestValidate_RejectsHollowTrustManifest(t *testing.T) {
+	result := validate.Validate(parse(t, fixture.InvalidJSON))
+
+	if !hasError(result, "must carry at least one substantive member") {
+		t.Errorf("expected hollow trust manifest error, got: %+v", result.Errors)
+	}
+}
+
+func TestValidate_RejectsSignatureWithoutSubjectAndIssuedAt(t *testing.T) {
+	result := validate.Validate(parse(t, fixture.InvalidJSON))
+
+	wants := []string{
+		"a trustManifest carrying a signature must include a subject",
+		"a trustManifest carrying a signature must include issuedAt",
+	}
+
+	for _, want := range wants {
+		if !hasError(result, want) {
+			t.Errorf("expected error containing %q, got: %+v", want, result.Errors)
+		}
+	}
+}
+
+func TestValidate_RejectsSubjectContradictingItsEntry(t *testing.T) {
+	result := validate.Validate(parse(t, fixture.InvalidJSON))
+
+	wants := []string{
+		`subject.type "application/gguf" must equal the entry type "application/json"`,
+		`subject.url "https://example.com/other.json" must equal the entry url`,
+	}
+
+	for _, want := range wants {
+		if !hasError(result, want) {
+			t.Errorf("expected error containing %q, got: %+v", want, result.Errors)
+		}
+	}
+}
+
+func TestValidate_ManifestTimestamps(t *testing.T) {
+	result := validate.Validate(parse(t, fixture.InvalidJSON))
+
+	if !hasError(result, "issuedAt is not a valid RFC 3339 datetime") {
+		t.Errorf("expected issuedAt error, got: %+v", result.Errors)
+	}
+
+	// An expired manifest is a SHOULD-level rejection, so it warns.
+	if !hasWarning(result, "SHOULD be rejected") {
+		t.Errorf("expected expiry warning, got: %+v", result.Warnings)
 	}
 }
 
@@ -259,6 +334,54 @@ func TestValidate_NestedDepthLimit(t *testing.T) {
 
 	if !hasError(result, "nested catalog depth exceeds recommended limit") {
 		t.Errorf("expected depth-limit error, got: %+v", result.Errors)
+	}
+}
+
+func TestValidate_AcceptsNestingAtDepthLimit(t *testing.T) {
+	// The limit is the deepest accepted nesting, not the first rejected one.
+	result := validate.Validate(parse(t, fixture.NestedMaxJSON))
+
+	if !result.IsValid {
+		t.Errorf("expected nesting at the limit to be valid, errors: %+v", result.Errors)
+	}
+}
+
+// stubSource is a catalog.Source backed by fixture bytes, or by a load failure.
+type stubSource struct {
+	doc []byte
+	err error
+}
+
+func (s stubSource) Load(context.Context) (*catalog.AICatalog, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+
+	doc, err := catalog.Parse(s.doc)
+	if err != nil {
+		return nil, fmt.Errorf("stub parse: %w", err)
+	}
+
+	return doc, nil
+}
+
+func TestSource(t *testing.T) {
+	result, err := validate.Source(context.Background(), stubSource{doc: fixture.CatalogJSON})
+	if err != nil {
+		t.Fatalf("Source error: %v", err)
+	}
+
+	if !result.IsValid || result.ConformanceLevel != validate.Trusted {
+		t.Errorf("unexpected result: valid=%v level=%v errors=%+v",
+			result.IsValid, result.ConformanceLevel, result.Errors)
+	}
+}
+
+func TestSource_LoadFailure(t *testing.T) {
+	if _, err := validate.Source(
+		context.Background(), stubSource{err: errors.New("backend unavailable")},
+	); err == nil {
+		t.Fatal("expected a load error to propagate")
 	}
 }
 

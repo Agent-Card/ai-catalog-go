@@ -43,11 +43,12 @@ func IdentityDomain(identity string) (string, bool) {
 }
 
 // IdentityBindsToEntry reports whether a trust-manifest identity's domain aligns
-// with an entry identifier's publisher domain. It returns (aligned, applies);
+// with an entry identifier's publisher domain, as (aligned, applies).
+//
 // applies is false only when the entry identifier carries no publisher domain,
-// in which case the binding rule does not apply and aligned is reported as true.
-// An identity with no determinable domain cannot align, so it reports
-// (false, true) rather than skipping the check.
+// where the rule cannot be evaluated and aligned is reported as true. An
+// identity with no determinable domain reports (false, true): it fails the
+// check rather than escaping it.
 func IdentityBindsToEntry(identifier, identity string) (bool, bool) {
 	publisher, pubOK := PublisherDomain(identifier)
 	if !pubOK {

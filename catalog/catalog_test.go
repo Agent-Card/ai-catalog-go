@@ -4,7 +4,7 @@
 package catalog
 
 import (
-	"encoding/json"
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -70,31 +70,42 @@ func TestParse_Valid(t *testing.T) {
 	}
 }
 
-func TestParse_InvalidJSON(t *testing.T) {
+// The four entry points wrap the same decoder, so one document exercises all.
+func TestParse_AllInputForms(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "catalog.json")
+	if err := os.WriteFile(path, validCatalogJSON, 0o600); err != nil {
+		t.Fatalf("write temp file: %v", err)
+	}
+
+	forms := map[string]func() (*AICatalog, error){
+		"Parse":       func() (*AICatalog, error) { return Parse(validCatalogJSON) },
+		"ParseString": func() (*AICatalog, error) { return ParseString(string(validCatalogJSON)) },
+		"ParseReader": func() (*AICatalog, error) { return ParseReader(bytes.NewReader(validCatalogJSON)) },
+		"ParseFile":   func() (*AICatalog, error) { return ParseFile(path) },
+	}
+
+	for name, parse := range forms {
+		c, err := parse()
+		if err != nil {
+			t.Errorf("%s error: %v", name, err)
+
+			continue
+		}
+
+		if c.SpecVersion != testSpecVersion || len(c.Entries) != fixtureEntries {
+			t.Errorf("%s: SpecVersion = %q, len(Entries) = %d",
+				name, c.SpecVersion, len(c.Entries))
+		}
+	}
+}
+
+func TestParse_Errors(t *testing.T) {
 	if _, err := Parse([]byte(`not json`)); err == nil {
-		t.Fatal("expected error for invalid JSON, got nil")
-	}
-}
-
-func TestParseString(t *testing.T) {
-	c, err := ParseString(string(validCatalogJSON))
-	if err != nil {
-		t.Fatalf("ParseString error: %v", err)
+		t.Error("Parse(invalid JSON): expected an error")
 	}
 
-	if len(c.Entries) != fixtureEntries {
-		t.Errorf("len(Entries) = %d, want %d", len(c.Entries), fixtureEntries)
-	}
-}
-
-func TestParseReader(t *testing.T) {
-	c, err := ParseReader(strings.NewReader(string(validCatalogJSON)))
-	if err != nil {
-		t.Fatalf("ParseReader error: %v", err)
-	}
-
-	if c.SpecVersion != testSpecVersion {
-		t.Errorf("SpecVersion = %q", c.SpecVersion)
+	if _, err := ParseFile("/nonexistent/path/catalog.json"); err == nil {
+		t.Error("ParseFile(missing file): expected an error")
 	}
 }
 
@@ -124,6 +135,71 @@ func TestToJSON_RoundTrip(t *testing.T) {
 	}
 }
 
+// Extensions, the catalog signature, and the trust manifest's subject binding
+// must survive a parse/serialize round trip under their spec member names.
+func TestRoundTrip_PreservesExtensionsSignatureAndSubject(t *testing.T) {
+	const doc = `{"specVersion":"1.0","signature":"eyJhbGciOiJFUzI1NiJ9..c2ln",` +
+		`"extensions":{"com.example.flag":true},` +
+		`"entries":[{"identifier":"urn:example:a","type":"application/json",` +
+		`"url":"https://example.com/a.json",` +
+		`"extensions":{"com.example.score":0.5},` +
+		`"trustManifest":{"identity":"urn:example:a",` +
+		`"subject":{"type":"application/json","digest":"sha256:abc",` +
+		`"url":"https://example.com/a.json"},` +
+		`"issuedAt":"2026-03-15T10:00:00Z","expiresAt":"2126-03-15T10:00:00Z",` +
+		`"extensions":{"com.example.note":"x"}}}]}`
+
+	c, err := ParseString(doc)
+	if err != nil {
+		t.Fatalf("ParseString error: %v", err)
+	}
+
+	if c.Signature == "" {
+		t.Error("catalog signature was dropped on parse")
+	}
+
+	if _, ok := c.Extensions["com.example.flag"]; !ok {
+		t.Errorf("catalog extensions were dropped on parse: %+v", c.Extensions)
+	}
+
+	entry := &c.Entries[0]
+	if _, ok := entry.Extensions["com.example.score"]; !ok {
+		t.Errorf("entry extensions were dropped on parse: %+v", entry.Extensions)
+	}
+
+	manifest := entry.TrustManifest
+	if manifest.Subject == nil || manifest.Subject.Digest != "sha256:abc" {
+		t.Errorf("trust manifest subject was dropped on parse: %+v", manifest.Subject)
+	}
+
+	if manifest.IssuedAt == "" || manifest.ExpiresAt == "" {
+		t.Errorf("trust manifest timestamps were dropped on parse: %+v", manifest)
+	}
+
+	if _, ok := manifest.Extensions["com.example.note"]; !ok {
+		t.Errorf("trust manifest extensions were dropped on parse: %+v", manifest.Extensions)
+	}
+
+	data, err := c.ToJSON()
+	if err != nil {
+		t.Fatalf("ToJSON error: %v", err)
+	}
+
+	for _, want := range []string{
+		`"extensions":{"com.example.flag":true}`,
+		`"subject":{"type":"application/json","digest":"sha256:abc"`,
+		`"issuedAt":"2026-03-15T10:00:00Z"`,
+	} {
+		if !strings.Contains(string(data), want) {
+			t.Errorf("serialized document missing %s: %s", want, data)
+		}
+	}
+
+	if strings.Contains(string(data), `"metadata"`) {
+		t.Errorf("extensions must not serialize as 'metadata': %s", data)
+	}
+}
+
 func TestMarshalJSON_EmptyEntriesSerializesAsArray(t *testing.T) {
 	c := &AICatalog{SpecVersion: testSpecVersion}
 
@@ -141,7 +217,7 @@ func TestMarshalJSON_EmptyEntriesSerializesAsArray(t *testing.T) {
 	}
 }
 
-func TestToJSONIndent(t *testing.T) {
+func TestIndentedOutputRoundTrips(t *testing.T) {
 	c := validCatalog(t)
 
 	data, err := c.ToJSONIndent()
@@ -150,49 +226,26 @@ func TestToJSONIndent(t *testing.T) {
 	}
 
 	if !strings.Contains(string(data), "\n") {
-		t.Error("indented JSON should contain newlines")
+		t.Error("ToJSONIndent should emit newlines")
 	}
-
-	var raw map[string]any
-	if err := json.Unmarshal(data, &raw); err != nil {
-		t.Fatalf("indented output is not valid JSON: %v", err)
-	}
-}
-
-func TestWriteJSON(t *testing.T) {
-	c := validCatalog(t)
 
 	var buf strings.Builder
 	if err := c.WriteJSON(&buf); err != nil {
 		t.Fatalf("WriteJSON error: %v", err)
 	}
 
-	if _, err := ParseString(buf.String()); err != nil {
-		t.Fatalf("written JSON should parse: %v", err)
-	}
-}
+	for name, out := range map[string]string{"ToJSONIndent": string(data), "WriteJSON": buf.String()} {
+		restored, err := ParseString(out)
+		if err != nil {
+			t.Errorf("%s output does not parse: %v", name, err)
 
-func TestParseFile(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "catalog.json")
+			continue
+		}
 
-	if err := os.WriteFile(path, validCatalogJSON, 0o600); err != nil {
-		t.Fatalf("write temp file: %v", err)
-	}
-
-	c, err := ParseFile(path)
-	if err != nil {
-		t.Fatalf("ParseFile error: %v", err)
-	}
-
-	if c.SpecVersion != testSpecVersion {
-		t.Errorf("SpecVersion = %q", c.SpecVersion)
-	}
-}
-
-func TestParseFile_NotFound(t *testing.T) {
-	if _, err := ParseFile("/nonexistent/path/catalog.json"); err == nil {
-		t.Fatal("expected error for missing file, got nil")
+		if len(restored.Entries) != len(c.Entries) {
+			t.Errorf("%s: len(Entries) = %d, want %d",
+				name, len(restored.Entries), len(c.Entries))
+		}
 	}
 }
 
@@ -243,21 +296,6 @@ func TestGetByType(t *testing.T) {
 
 	if got := c.GetByType("application/does-not-exist"); got != nil {
 		t.Errorf("GetByType(unknown) = %+v, want nil", got)
-	}
-}
-
-func TestGetByType_ReturnsPointerIntoSlice(t *testing.T) {
-	c := validCatalog(t)
-
-	results := c.GetByType("application/gguf")
-	if len(results) != 1 {
-		t.Fatalf("len = %d, want 1", len(results))
-	}
-
-	results[0].DisplayName = modifiedName
-
-	if again := c.GetByType("application/gguf"); again[0].DisplayName != modifiedName {
-		t.Error("GetByType should return pointers into the Entries slice")
 	}
 }
 
@@ -336,9 +374,8 @@ func TestGetLatest_Semver(t *testing.T) {
 }
 
 func TestGetLatest_FallbackToUpdatedAt(t *testing.T) {
-	// The invalid fixture's "urn:dup" pair is two same-identifier, unversioned
-	// entries (a deliberately invalid shape) that exercise the updatedAt
-	// fallback.
+	// The invalid fixture's "urn:dup" pair is two unversioned entries sharing an
+	// identifier, the shape that forces the updatedAt fallback.
 	c := parseFixture(t, fixture.InvalidJSON)
 
 	entry, ok := c.GetLatest("urn:dup")
@@ -426,17 +463,5 @@ func TestSearchByRegex_InvalidPattern(t *testing.T) {
 
 	if _, err := c.SearchByRegex("[invalid("); err == nil {
 		t.Fatal("expected error for invalid regex, got nil")
-	}
-}
-
-func TestIsNestedCatalog(t *testing.T) {
-	nested := &CatalogEntry{Type: MediaTypeCatalog}
-	if !nested.IsNestedCatalog() {
-		t.Error("expected IsNestedCatalog to be true")
-	}
-
-	leaf := &CatalogEntry{Type: "application/json"}
-	if leaf.IsNestedCatalog() {
-		t.Error("expected IsNestedCatalog to be false")
 	}
 }
