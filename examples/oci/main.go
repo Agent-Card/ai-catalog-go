@@ -4,12 +4,12 @@
 // Command oci-example packs an AI Catalog document into a standard OCI image
 // layout on disk.
 //
-// Packaging a catalog as an OCI artifact is NOT part of the AI Catalog
-// specification — it is only an informative "mapping to OCI". It is therefore
-// intentionally kept out of the SDK and shown here as a self-contained example
-// that depends solely on the standard library and the catalog package. Adapt or
-// copy it; production use likely wants a real OCI client (e.g. oras) for
-// distribution and cosign for signing.
+// Packaging a catalog as an OCI artifact is not part of the AI Catalog
+// specification; the spec describes it only as an informative mapping. It is
+// therefore kept out of the SDK and shown here as a self-contained example
+// depending solely on the standard library and the catalog package. Production
+// use wants a real OCI client (such as oras) for distribution and cosign for
+// signing.
 package main
 
 import (

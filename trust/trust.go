@@ -2,18 +2,20 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package trust provides trust-manifest analysis, digest parsing and
-// verification, and JCS-style canonicalization for AI Catalog documents.
+// verification, and JCS (RFC 8785) canonicalization for AI Catalog documents.
 package trust
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"crypto/sha512"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
+	"time"
 
 	"github.com/agntcy/ai-catalog-go/catalog"
 )
@@ -29,8 +31,9 @@ var (
 	// ErrWeakDigestAlgorithm indicates a digest algorithm weaker than SHA-256.
 	ErrWeakDigestAlgorithm = errors.New("digest algorithm is weaker than SHA-256")
 
-	// ErrInvalidDigestHex indicates a digest whose value is not valid hex.
-	ErrInvalidDigestHex = errors.New("digest hex value contains non-hex characters")
+	// ErrInvalidDigestHex indicates a digest whose value is not lowercase hex
+	// of the length its algorithm requires.
+	ErrInvalidDigestHex = errors.New("invalid digest hex value")
 )
 
 // Severity classifies a trust finding.
@@ -65,19 +68,27 @@ type Finding struct {
 
 // ManifestReport summarizes the analysis of a single trust manifest.
 type ManifestReport struct {
-	Path             string
-	Identity         string
-	HasSignature     bool
+	Path     string
+	Identity string
+
+	// HasSignature and HasSubject are both required for the manifest to be
+	// bound to specific artifact bytes.
+	HasSignature bool
+	HasSubject   bool
+
 	AttestationCount int
 	ProvenanceCount  int
 	Findings         []Finding
 }
 
-// CatalogTrustReport aggregates trust analysis across a catalog's host and
-// entries.
+// CatalogTrustReport aggregates trust analysis across a catalog document, its
+// host, and its entries.
 type CatalogTrustReport struct {
-	// Findings is the combined list of host and entry findings.
+	// Findings is the combined list of catalog, host, and entry findings.
 	Findings []Finding
+
+	// HasSignature reports whether the document carries a top-level signature.
+	HasSignature bool
 
 	// Host is the host manifest report, or nil when the host has no manifest.
 	Host *ManifestReport
@@ -136,11 +147,13 @@ func ParseDigest(value string) (*ParsedDigest, error) {
 	}
 
 	if len(hexValue) != expectedLen {
-		return nil, ErrInvalidDigestHex
+		return nil, fmt.Errorf("%w: %s requires %d hex characters, found %d",
+			ErrInvalidDigestHex, normalized, expectedLen, len(hexValue))
 	}
 
 	if _, err := hex.DecodeString(hexValue); err != nil {
-		return nil, ErrInvalidDigestHex
+		return nil, fmt.Errorf("%w: %q contains non-hex characters",
+			ErrInvalidDigestHex, hexValue)
 	}
 
 	return &ParsedDigest{algorithm: normalized, hexValue: strings.ToLower(hexValue)}, nil
@@ -178,41 +191,15 @@ func VerifyDigest(expectedDigest string, data []byte) (bool, error) {
 	return parsed.VerifyBytes(data), nil
 }
 
-// CanonicalizeTrustManifest returns the canonical JSON form of a trust manifest
-// (recursively key-sorted, with the "signature" field removed) suitable for
-// signing or signature verification.
-func CanonicalizeTrustManifest(manifest *catalog.TrustManifest) (string, error) {
-	raw, err := json.Marshal(manifest)
-	if err != nil {
-		return "", fmt.Errorf("marshal trust manifest: %w", err)
-	}
-
-	// UseNumber preserves exact integer metadata values across the round-trip.
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.UseNumber()
-
-	var value any
-	if err := dec.Decode(&value); err != nil {
-		return "", fmt.Errorf("decode trust manifest: %w", err)
-	}
-
-	if object, ok := value.(map[string]any); ok {
-		delete(object, "signature")
-	}
-
-	// encoding/json sorts map keys at every level, yielding JCS-style ordering.
-	canonical, err := json.Marshal(value)
-	if err != nil {
-		return "", fmt.Errorf("marshal canonical trust manifest: %w", err)
-	}
-
-	return string(canonical), nil
-}
-
-// AnalyzeCatalog inspects the trust manifests on a catalog's host and entries
-// and returns a report of findings.
+// AnalyzeCatalog inspects a catalog's own signature and the trust manifests on
+// its host and entries, and returns a report of findings.
 func AnalyzeCatalog(c *catalog.AICatalog) CatalogTrustReport {
 	var report CatalogTrustReport
+
+	if c.Signature != "" {
+		report.HasSignature = true
+		report.Findings = analyzeCatalogSignature(c.Signature, report.Findings)
+	}
 
 	if c.Host != nil {
 		if hostReport := analyzeHostManifest(c.Host); hostReport != nil {
@@ -229,6 +216,22 @@ func AnalyzeCatalog(c *catalog.AICatalog) CatalogTrustReport {
 	}
 
 	return report
+}
+
+// analyzeCatalogSignature checks the document's own signature, which covers the
+// catalog with its "signature" member removed. See CanonicalizeForSignature.
+func analyzeCatalogSignature(signature string, findings []Finding) []Finding {
+	const path = "catalog.signature"
+
+	if !looksLikeDetachedJWS(signature) {
+		return append(findings, Finding{
+			Severity: SeverityError,
+			Path:     path,
+			Message:  "signature must use detached JWS compact serialization",
+		})
+	}
+
+	return analyzeSignatureAlgorithm(path, signature, findings)
 }
 
 func analyzeHostManifest(host *catalog.HostInfo) *ManifestReport {
@@ -274,7 +277,7 @@ func analyzeEntryManifest(entry *catalog.CatalogEntry, index int) *ManifestRepor
 
 	var findings []Finding
 
-	// Identity binds to the entry by domain alignment, not exact equality.
+	// Identity binds by domain alignment, not exact equality.
 	if aligned, applies := catalog.IdentityBindsToEntry(
 		entry.Identifier, manifest.Identity); applies && !aligned {
 		publisherDomain, _ := catalog.PublisherDomain(entry.Identifier)
@@ -315,6 +318,7 @@ func newManifestReport(path string, manifest *catalog.TrustManifest, findings []
 		Path:             path,
 		Identity:         manifest.Identity,
 		HasSignature:     manifest.Signature != "",
+		HasSubject:       manifest.Subject != nil,
 		AttestationCount: len(manifest.Attestations),
 		ProvenanceCount:  len(manifest.Provenance),
 		Findings:         findings,
@@ -322,19 +326,146 @@ func newManifestReport(path string, manifest *catalog.TrustManifest, findings []
 }
 
 func analyzeManifestContents(path string, manifest *catalog.TrustManifest, findings []Finding) []Finding {
-	if manifest.Signature != "" && !looksLikeDetachedJWS(manifest.Signature) {
-		findings = append(findings, Finding{
-			Severity: SeverityError,
-			Path:     path + ".signature",
-			Message:  "signature must use detached JWS compact serialization",
-		})
-	}
-
+	findings = analyzeSignature(path, manifest, findings)
+	findings = analyzeSubject(path, manifest.Subject, findings)
+	findings = analyzeValidityWindow(path, manifest, findings)
 	findings = analyzeTrustSchema(path, manifest.TrustSchema, findings)
 	findings = analyzeAttestations(path, manifest.Attestations, findings)
 	findings = analyzeProvenance(path, manifest.Provenance, findings)
 
 	return findings
+}
+
+func analyzeSignature(path string, manifest *catalog.TrustManifest, findings []Finding) []Finding {
+	if manifest.Signature == "" {
+		return findings
+	}
+
+	if !looksLikeDetachedJWS(manifest.Signature) {
+		findings = append(findings, Finding{
+			Severity: SeverityError,
+			Path:     path + ".signature",
+			Message:  "signature must use detached JWS compact serialization",
+		})
+
+		return findings
+	}
+
+	// Without a subject the signature covers no artifact and can be lifted onto
+	// unrelated content.
+	if manifest.Subject == nil {
+		findings = append(findings, Finding{
+			Severity: SeverityError,
+			Path:     path + ".subject",
+			Message:  "a signed trust manifest must carry a subject binding it to the artifact",
+		})
+	}
+
+	if manifest.IssuedAt == "" {
+		findings = append(findings, Finding{
+			Severity: SeverityError,
+			Path:     path + ".issuedAt",
+			Message:  "a signed trust manifest must carry an issuedAt timestamp",
+		})
+	}
+
+	return analyzeSignatureAlgorithm(path+".signature", manifest.Signature, findings)
+}
+
+func analyzeSignatureAlgorithm(path, signature string, findings []Finding) []Finding {
+	algorithm, ok := jwsAlgorithm(signature)
+	if !ok {
+		return append(findings, Finding{
+			Severity: SeverityError,
+			Path:     path,
+			Message:  "signature JWS header must be base64url-encoded JSON declaring an 'alg'",
+		})
+	}
+
+	switch {
+	case isForbiddenJWSAlgorithm(algorithm):
+		return append(findings, Finding{
+			Severity: SeverityError,
+			Path:     path,
+			Message: fmt.Sprintf(
+				"signature algorithm '%s' must be rejected; a trust manifest requires an asymmetric signature",
+				algorithm),
+		})
+	case !slices.Contains(allowedJWSAlgorithms, algorithm):
+		return append(findings, Finding{
+			Severity: SeverityWarning,
+			Path:     path,
+			Message: fmt.Sprintf(
+				"signature algorithm '%s' is outside the specification allowlist (%s)",
+				algorithm, strings.Join(allowedJWSAlgorithms, ", ")),
+		})
+	}
+
+	return findings
+}
+
+func analyzeSubject(path string, subject *catalog.Subject, findings []Finding) []Finding {
+	if subject == nil {
+		return findings
+	}
+
+	base := path + ".subject"
+
+	if subject.Type == "" {
+		findings = append(findings, Finding{
+			Severity: SeverityError,
+			Path:     base + ".type",
+			Message:  "subject type must not be empty",
+		})
+	}
+
+	if subject.Digest == "" {
+		findings = append(findings, Finding{
+			Severity: SeverityError,
+			Path:     base + ".digest",
+			Message:  "subject digest must not be empty",
+		})
+
+		return findings
+	}
+
+	return analyzeDigestField(subject.Digest, base+".digest", findings)
+}
+
+func analyzeValidityWindow(path string, manifest *catalog.TrustManifest, findings []Finding) []Finding {
+	if manifest.IssuedAt != "" {
+		if _, err := time.Parse(time.RFC3339, manifest.IssuedAt); err != nil {
+			findings = append(findings, invalidTimestamp(path+".issuedAt", manifest.IssuedAt))
+		}
+	}
+
+	if manifest.ExpiresAt == "" {
+		return findings
+	}
+
+	expiresAt, err := time.Parse(time.RFC3339, manifest.ExpiresAt)
+	if err != nil {
+		return append(findings, invalidTimestamp(path+".expiresAt", manifest.ExpiresAt))
+	}
+
+	if expiresAt.Before(time.Now()) {
+		return append(findings, Finding{
+			Severity: SeverityWarning,
+			Path:     path + ".expiresAt",
+			Message: fmt.Sprintf(
+				"trust manifest expired at %s and SHOULD be rejected", manifest.ExpiresAt),
+		})
+	}
+
+	return findings
+}
+
+func invalidTimestamp(path, value string) Finding {
+	return Finding{
+		Severity: SeverityError,
+		Path:     path,
+		Message:  fmt.Sprintf("%q is not a valid RFC 3339 datetime", value),
+	}
 }
 
 func analyzeTrustSchema(path string, schema *catalog.TrustSchema, findings []Finding) []Finding {
@@ -441,4 +572,38 @@ func looksLikeDetachedJWS(signature string) bool {
 	}
 
 	return parts[0] != "" && parts[1] == "" && parts[2] != ""
+}
+
+// allowedJWSAlgorithms is the spec's signature algorithm allowlist: the
+// asymmetric algorithms producers must use and consumers must support.
+var allowedJWSAlgorithms = []string{"ES256", "ES384", "EdDSA", "PS256", "PS384", "RS256"}
+
+// isForbiddenJWSAlgorithm reports whether algorithm cannot establish
+// third-party trust: "none" carries no proof, and the HMAC family only proves
+// possession of a shared secret. Matched case-insensitively.
+func isForbiddenJWSAlgorithm(algorithm string) bool {
+	normalized := strings.ToUpper(algorithm)
+
+	return normalized == "NONE" || strings.HasPrefix(normalized, "HS")
+}
+
+// jwsAlgorithm returns the "alg" declared by a JWS compact serialization's
+// protected header.
+func jwsAlgorithm(signature string) (string, bool) {
+	encoded, _, _ := strings.Cut(signature, ".")
+
+	header, err := base64.RawURLEncoding.DecodeString(encoded)
+	if err != nil {
+		return "", false
+	}
+
+	var parsed struct {
+		Algorithm string `json:"alg"`
+	}
+
+	if err := json.Unmarshal(header, &parsed); err != nil || parsed.Algorithm == "" {
+		return "", false
+	}
+
+	return parsed.Algorithm, true
 }

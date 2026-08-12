@@ -10,9 +10,8 @@ import (
 	"github.com/agntcy/ai-catalog-go/catalog"
 )
 
-// Source validates the AI Catalog document backing c. It is a convenience
-// bridge for callers holding a catalog.Source handle (the catalog package
-// cannot depend on validate without creating an import cycle).
+// Source loads the AI Catalog document behind c and validates it, for callers
+// holding a catalog.Source rather than an already-parsed document.
 func Source(ctx context.Context, c catalog.Source) (Result, error) {
 	doc, err := c.Load(ctx)
 	if err != nil {

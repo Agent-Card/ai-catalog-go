@@ -5,8 +5,9 @@
     "identifier": "did:example:org-acme-corp",
     "documentationUrl": "https://example.com/docs"
   },
-  "metadata": {
-    "category": "demo"
+  "extensions": {
+    "com.example.category": "demo",
+    "https://example.com/extensions/demo": {"enabled": true}
   },
   "entries": [
     {
@@ -79,7 +80,17 @@
       "displayName": "Trusted Service",
       "type": "application/mcp-server-card+json",
       "url": "https://example.com/trusted.json",
-      "trustManifest": {"identity": "did:web:acme.com"}
+      "trustManifest": {
+        "identity": "did:web:acme.com",
+        "subject": {
+          "type": "application/mcp-server-card+json",
+          "digest": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+          "url": "https://example.com/trusted.json"
+        },
+        "issuedAt": "2026-03-15T10:00:00Z",
+        "expiresAt": "2126-03-15T10:00:00Z",
+        "signature": "eyJhbGciOiJFUzI1NiJ9..c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+      }
     },
     {
       "identifier": "urn:example:catalog:child",

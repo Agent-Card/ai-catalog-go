@@ -4,8 +4,11 @@
 package provider
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -100,6 +103,36 @@ func TestWeb_LoadsViaFetcher(t *testing.T) {
 	}
 }
 
+// The default Fetcher is the transport every caller of Web gets unless they
+// override it.
+func TestWeb_DefaultHTTPFetcher(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/catalog.json" {
+			w.WriteHeader(http.StatusNotFound)
+
+			return
+		}
+
+		w.Header().Set("Content-Type", catalog.MediaTypeCatalog)
+		_, _ = w.Write(rootCatalog())
+	}))
+	defer server.Close()
+
+	c, err := Web(context.Background(), server.URL+"/catalog.json",
+		WithHTTPClient(server.Client()))
+	if err != nil {
+		t.Fatalf("Web: %v", err)
+	}
+
+	if _, ok := loadDoc(t, c).GetByID(entryAID); !ok {
+		t.Fatalf("expected to find %q", entryAID)
+	}
+
+	if _, err := Web(context.Background(), server.URL+"/missing.json"); err == nil {
+		t.Error("expected an error for a non-200 response")
+	}
+}
+
 func TestLoad_ReturnsIndependentDocuments(t *testing.T) {
 	const url = "https://host.example/catalog.json"
 
@@ -117,8 +150,7 @@ func TestLoad_ReturnsIndependentDocuments(t *testing.T) {
 		t.Fatal("each Load should return a distinct document, got the same pointer")
 	}
 
-	// Mutating one document — appending an entry and editing a nested field —
-	// must not leak into any later Load.
+	// Mutating one document must not leak into any later Load.
 	first.Entries = append(first.Entries, catalog.CatalogEntry{Identifier: "urn:mutated"})
 	first.Entries[0].DisplayName = "Mutated"
 
@@ -130,6 +162,46 @@ func TestLoad_ReturnsIndependentDocuments(t *testing.T) {
 
 	if third.Entries[0].DisplayName == "Mutated" {
 		t.Error("field mutation leaked into a later Load")
+	}
+}
+
+func TestRaw_PreservesServedBytes(t *testing.T) {
+	const url = "https://host.example/catalog.json"
+
+	// A member this SDK does not model: re-serializing the parsed document
+	// would drop it, breaking any signature computed over the original.
+	served := []byte(`{"specVersion":"1.0","entries":[],"futureMember":{"a":1}}`)
+
+	c, err := Web(context.Background(), url,
+		WithFetcher(&stubFetcher{docs: map[string][]byte{url: served}}))
+	if err != nil {
+		t.Fatalf("Web: %v", err)
+	}
+
+	source, ok := c.(catalog.RawSource)
+	if !ok {
+		t.Fatal("built-in providers should implement catalog.RawSource")
+	}
+
+	raw, err := source.Raw(context.Background())
+	if err != nil {
+		t.Fatalf("Raw: %v", err)
+	}
+
+	if !bytes.Equal(raw, served) {
+		t.Errorf("Raw = %s, want %s", raw, served)
+	}
+
+	// The returned slice is the caller's to modify.
+	raw[0] = 'X'
+
+	again, err := source.Raw(context.Background())
+	if err != nil {
+		t.Fatalf("Raw: %v", err)
+	}
+
+	if !bytes.Equal(again, served) {
+		t.Errorf("mutating a returned slice changed the source: %s", again)
 	}
 }
 

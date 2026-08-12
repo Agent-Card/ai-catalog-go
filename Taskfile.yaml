@@ -16,10 +16,6 @@ vars:
   LICENSEI_VERSION: "0.9.0"
   LICENSEI_BIN: "{{ .BIN_DIR }}/licensei-{{.LICENSEI_VERSION}}"
 
-  # renovate: datasource=github-releases depName=open-telemetry/opentelemetry-go-build-tools
-  MULTIMOD_VERSION: "0.17.0"
-  MULTIMOD_BIN: "{{ .BIN_DIR }}/multimod-{{.MULTIMOD_VERSION}}"
-
 tasks:
   default:
     cmds:
@@ -60,24 +56,6 @@ tasks:
     desc: Run all linters
     cmds:
       - task: lint:golangci-lint
-
-  ##
-  ## Release
-  ##
-  release:verify:
-    desc: Verify release readiness
-    deps:
-      - task: deps:multimod-bin
-    cmds:
-      - "{{ .MULTIMOD_BIN }} verify"
-
-  release:prepare:
-    desc: Prepare release
-    deps:
-      - task: deps:multimod-bin
-    cmds:
-      - "{{ .MULTIMOD_BIN }} prerelease --all-module-sets --skip-go-mod-tidy=true --commit-to-different-branch=false"
-      - git commit --amend --signoff --no-edit
 
   ##
   ## License
@@ -152,17 +130,3 @@ tasks:
       - chmod +x {{.LICENSEI_BIN}}
     status:
       - test -x {{.LICENSEI_BIN}}
-
-  deps:multimod-bin:
-    desc: Build the multimod binary
-    internal: true
-    deps:
-      - deps:bin-dir
-    vars:
-      MULTIMOD_REPO_DIR: "{{ .BIN_DIR }}/opentelemetry-go-build-tools"
-    cmds:
-      - git clone https://github.com/open-telemetry/opentelemetry-go-build-tools --branch multimod/v{{.MULTIMOD_VERSION}} {{.MULTIMOD_REPO_DIR}}
-      - go build -C {{.MULTIMOD_REPO_DIR}}/multimod -o {{.MULTIMOD_BIN}} main.go
-      - rm -rf {{.MULTIMOD_REPO_DIR}}
-    status:
-      - test -x {{.MULTIMOD_BIN}}
