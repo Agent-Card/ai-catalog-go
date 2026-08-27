@@ -1,4 +1,4 @@
-// Copyright AGNTCY Contributors (https://github.com/agntcy)
+// Copyright AI-Catalog Contributors (https://github.com/Agent-Card)
 // SPDX-License-Identifier: Apache-2.0
 
 package provider
@@ -13,8 +13,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/agntcy/ai-catalog-go/catalog"
-	"github.com/agntcy/ai-catalog-go/internal/fixture"
+	"github.com/Agent-Card/ai-catalog-go/catalog"
+	"github.com/Agent-Card/ai-catalog-go/internal/fixture"
 )
 
 // Identifiers known to exist in the shared fixture.

@@ -1,6 +1,6 @@
 # Release
 
-`github.com/agntcy/ai-catalog-go` is a single Go module. A release is cut by pushing a semver tag — there is no version string to bump in the source tree, and consumers fetch the module through the Go module proxy rather than downloading artifacts.
+`github.com/Agent-Card/ai-catalog-go` is a single Go module. A release is cut by pushing a semver tag — there is no version string to bump in the source tree, and consumers fetch the module through the Go module proxy rather than downloading artifacts.
 
 Examples below use `v1.0.0`; substitute the version being released.
 
@@ -31,11 +31,11 @@ Pushing a `v*.*.*` tag triggers the [release workflow](.github/workflows/release
 ## 3. Verify the release
 
 * Confirm the release workflow completed successfully.
-* Check the [Releases page](https://github.com/agntcy/ai-catalog-go/releases) for the new entry and its generated notes. The release carries no build assets.
+* Check the [Releases page](https://github.com/Agent-Card/ai-catalog-go/releases) for the new entry and its generated notes. The release carries no build assets.
 * Confirm the version resolves through the proxy:
 
 ```sh
-GOPROXY=proxy.golang.org go list -m github.com/agntcy/ai-catalog-go@v1.0.0
+GOPROXY=proxy.golang.org go list -m github.com/Agent-Card/ai-catalog-go@v1.0.0
 ```
 
-Documentation for the new version appears on [pkg.go.dev](https://pkg.go.dev/github.com/agntcy/ai-catalog-go) shortly after the first fetch.
+Documentation for the new version appears on [pkg.go.dev](https://pkg.go.dev/github.com/Agent-Card/ai-catalog-go) shortly after the first fetch.

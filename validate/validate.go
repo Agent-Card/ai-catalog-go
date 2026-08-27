@@ -1,4 +1,4 @@
-// Copyright AGNTCY Contributors (https://github.com/agntcy)
+// Copyright AI-Catalog Contributors (https://github.com/Agent-Card)
 // SPDX-License-Identifier: Apache-2.0
 
 // Package validate provides semantic validation and conformance-level
@@ -17,7 +17,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/agntcy/ai-catalog-go/catalog"
+	"github.com/Agent-Card/ai-catalog-go/catalog"
 )
 
 // ConformanceLevel is the AI Catalog conformance level a document satisfies.

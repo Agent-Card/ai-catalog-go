@@ -1,4 +1,4 @@
-// Copyright AGNTCY Contributors (https://github.com/agntcy)
+// Copyright AI-Catalog Contributors (https://github.com/Agent-Card)
 // SPDX-License-Identifier: Apache-2.0
 
 package trust_test
@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/agntcy/ai-catalog-go/catalog"
-	"github.com/agntcy/ai-catalog-go/internal/fixture"
-	"github.com/agntcy/ai-catalog-go/trust"
+	"github.com/Agent-Card/ai-catalog-go/catalog"
+	"github.com/Agent-Card/ai-catalog-go/internal/fixture"
+	"github.com/Agent-Card/ai-catalog-go/trust"
 )
 
 // SHA-256 of the ASCII bytes "test".

@@ -1,5 +1,5 @@
 <!--
-Copyright AGNTCY Contributors (https://github.com/agntcy)
+Copyright AI-Catalog Contributors (https://github.com/Agent-Card)
 SPDX-License-Identifier: Apache-2.0
 -->
 
@@ -21,7 +21,7 @@ The repository follows the AI Catalog spec's own split between **normative** con
 ## Installation
 
 ```bash
-go get github.com/agntcy/ai-catalog-go
+go get github.com/Agent-Card/ai-catalog-go
 ```
 
 The minimum Go version is declared in [`go.mod`](./go.mod).
@@ -36,8 +36,8 @@ The `provider` package returns a `catalog.Source` — a loader for an AI Catalog
 import (
 	"context"
 
-	"github.com/agntcy/ai-catalog-go/catalog"
-	"github.com/agntcy/ai-catalog-go/provider"
+	"github.com/Agent-Card/ai-catalog-go/catalog"
+	"github.com/Agent-Card/ai-catalog-go/provider"
 )
 
 ctx := context.Background()
@@ -107,7 +107,7 @@ name := entry.ResolveDisplayName()
 ### Validate and detect conformance level
 
 ```go
-import "github.com/agntcy/ai-catalog-go/validate"
+import "github.com/Agent-Card/ai-catalog-go/validate"
 
 result := validate.Validate(doc)
 if !result.IsValid {
@@ -124,7 +124,7 @@ result, err := validate.Source(ctx, src)
 ### Analyze trust metadata
 
 ```go
-import "github.com/agntcy/ai-catalog-go/trust"
+import "github.com/Agent-Card/ai-catalog-go/trust"
 
 report := trust.AnalyzeCatalog(doc)
 for _, f := range report.Findings {

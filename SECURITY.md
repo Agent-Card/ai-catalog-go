@@ -1,24 +1,23 @@
-## Report a security issue
+# Security Policy
 
-The AI Catalog Go SDK project team welcomes security reports and is committed to
-providing prompt attention to security issues. Security issues should be
-reported privately via [security@agntcy.org](mailto:security@agntcy.org).
-Security issues should not be reported via the public GitHub Issue tracker.
+## Supported Versions
 
+Until a stable release process is established, security fixes are targeted at the current `main` branch.
 
-## Vulnerability coordination
+## Reporting a Vulnerability
 
-Remediation of security vulnerabilities is prioritized by the project team. The
-project team coordinates remediation with third-party project stakeholders via
-[GitHub Security Advisories](https://help.github.com/en/github/managing-security-vulnerabilities/about-github-security-advisories). Third-party stakeholders may include the reporter of the issue, affected direct or indirect
-users of AI Catalog Go SDK, and maintainers of upstream dependencies if applicable.
+- Prefer a private reporting channel.
+- If GitHub Security Advisories are enabled for the repository, use the "Report a vulnerability" flow.
+- If no private reporting channel is available, contact the repository maintainers privately before public disclosure.
+- Do not open a public issue for an unpatched vulnerability.
 
-Downstream project maintainers and AI Catalog Go SDK users can request participation in
-coordination of applicable security issues by sending your contact email address,
-GitHub username(s) and any other salient information to [security@agntcy.org](mailto:security@agntcy.org).
-Participation in security issue coordination processes is at the discretion of the AI Catalog Go SDK team.
+## What to Include
 
-## Security advisories
+- A description of the affected component.
+- Reproduction steps or a proof of concept.
+- The impact and any known mitigations.
+- The commit, branch, or version you tested.
 
-The project team is committed to transparency in the security issue disclosure
-process. The AI Catalog Go SDK team announces security issues via [project GitHub Release notes](https://github.com/agntcy/ai-catalog-go/releases).
+## Response Expectations
+
+The maintainers will aim to acknowledge reports promptly, validate impact, and coordinate remediation before public disclosure.

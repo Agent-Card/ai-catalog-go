@@ -1,4 +1,4 @@
-// Copyright AGNTCY Contributors (https://github.com/agntcy)
+// Copyright AI-Catalog Contributors (https://github.com/Agent-Card)
 // SPDX-License-Identifier: Apache-2.0
 
 // Package trust provides trust-manifest analysis, digest parsing and
@@ -17,7 +17,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/agntcy/ai-catalog-go/catalog"
+	"github.com/Agent-Card/ai-catalog-go/catalog"
 )
 
 // Digest-parsing errors. Callers may test for these with errors.Is.

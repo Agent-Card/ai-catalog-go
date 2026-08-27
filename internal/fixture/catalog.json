@@ -7,7 +7,9 @@
   },
   "extensions": {
     "com.example.category": "demo",
-    "https://example.com/extensions/demo": {"enabled": true}
+    "https://example.com/extensions/demo": {
+      "enabled": true
+    }
   },
   "entries": [
     {
@@ -15,24 +17,39 @@
       "displayName": "Finance Agent",
       "type": "application/a2a-agent-card+json",
       "description": "Handles financial queries",
-      "tags": ["finance", "banking"],
+      "tags": [
+        "finance",
+        "banking"
+      ],
       "url": "https://example.com/finance.json",
-      "publisher": {"identifier": "did:example:acme", "displayName": "Acme"}
+      "publisher": {
+        "identifier": "did:example:acme",
+        "displayName": "Acme"
+      }
     },
     {
       "identifier": "urn:example:data:nlp-corpus",
       "displayName": "NLP Corpus",
       "type": "application/octet-stream",
       "description": "Large language model training data",
-      "tags": ["nlp", "dataset"],
+      "tags": [
+        "nlp",
+        "dataset"
+      ],
       "url": "https://example.com/nlp.bin",
-      "publisher": {"identifier": "did:example:acme", "displayName": "Acme"}
+      "publisher": {
+        "identifier": "did:example:acme",
+        "displayName": "Acme"
+      }
     },
     {
       "identifier": "urn:example:model:embedding-v2",
       "type": "application/gguf",
       "url": "https://example.com/embed.gguf",
-      "publisher": {"identifier": "did:example:other", "displayName": "Other"}
+      "publisher": {
+        "identifier": "did:example:other",
+        "displayName": "Other"
+      }
     },
     {
       "identifier": "urn:example:mcp:weather",

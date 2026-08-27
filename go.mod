@@ -1,4 +1,4 @@
-module github.com/agntcy/ai-catalog-go
+module github.com/Agent-Card/ai-catalog-go
 
 go 1.25.0
 
