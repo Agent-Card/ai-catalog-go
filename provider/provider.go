@@ -1,4 +1,5 @@
-// Copyright AI-Catalog Contributors (https://github.com/Agent-Card)
+// Copyright AI-Catalog Contributors (https://github.com/Agent-Card/ai-catalog-go)
+// Copyright AGNTCY Contributors (https://github.com/agntcy)
 // SPDX-License-Identifier: Apache-2.0
 
 // Package provider offers built-in ways to obtain a catalog.Source: a local
