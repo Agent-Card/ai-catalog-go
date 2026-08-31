@@ -17,5 +17,6 @@ approved = [
 ignored = []
 
 [header]
-template = """// Copyright AGNTCY Contributors (https://github.com/agntcy)
+template = """// Copyright AI-Catalog Contributors (https://github.com/Agent-Card/ai-catalog-go)
+// Copyright AGNTCY Contributors (https://github.com/agntcy)
 // SPDX-License-Identifier: Apache-2.0"""

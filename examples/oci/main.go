@@ -1,3 +1,4 @@
+// Copyright AI-Catalog Contributors (https://github.com/Agent-Card/ai-catalog-go)
 // Copyright AGNTCY Contributors (https://github.com/agntcy)
 // SPDX-License-Identifier: Apache-2.0
 
@@ -21,7 +22,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/agntcy/ai-catalog-go/catalog"
+	"github.com/Agent-Card/ai-catalog-go/catalog"
 )
 
 const (

@@ -1,3 +1,4 @@
+// Copyright AI-Catalog Contributors (https://github.com/Agent-Card/ai-catalog-go)
 // Copyright AGNTCY Contributors (https://github.com/agntcy)
 // SPDX-License-Identifier: Apache-2.0
 
@@ -10,9 +11,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/agntcy/ai-catalog-go/catalog"
-	"github.com/agntcy/ai-catalog-go/internal/fixture"
-	"github.com/agntcy/ai-catalog-go/validate"
+	"github.com/Agent-Card/ai-catalog-go/catalog"
+	"github.com/Agent-Card/ai-catalog-go/internal/fixture"
+	"github.com/Agent-Card/ai-catalog-go/validate"
 )
 
 // parse parses one of the shared fixture documents.

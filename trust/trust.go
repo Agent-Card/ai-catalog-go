@@ -1,3 +1,4 @@
+// Copyright AI-Catalog Contributors (https://github.com/Agent-Card/ai-catalog-go)
 // Copyright AGNTCY Contributors (https://github.com/agntcy)
 // SPDX-License-Identifier: Apache-2.0
 
@@ -17,7 +18,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/agntcy/ai-catalog-go/catalog"
+	"github.com/Agent-Card/ai-catalog-go/catalog"
 )
 
 // Digest-parsing errors. Callers may test for these with errors.Is.
