@@ -1,8 +1,11 @@
+# Copyright AI-Catalog Contributors (https://github.com/Agent-Card/ai-catalog-go)
+# SPDX-License-Identifier: Apache-2.0
+
 ---
 name: Feature Request
 description: Suggest a feature for this project.
 title: "[Feature]: "
-labels: ["enhancement", "triage"]
+labels: ["enhancement"]
 body:
   - type: markdown
     attributes:

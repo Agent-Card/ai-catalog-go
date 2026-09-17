@@ -1,8 +1,11 @@
+# Copyright AI-Catalog Contributors (https://github.com/Agent-Card/ai-catalog-go)
+# SPDX-License-Identifier: Apache-2.0
+
 ---
 name: Bug Report
 description: Report a bug to help us improve.
 title: "[Bug]: "
-labels: ["bug", "triage"]
+labels: ["bug"]
 body:
   - type: markdown
     attributes:
@@ -22,16 +25,14 @@ body:
       description: Please describe what you expected would happen
     validations:
       required: true
-  - type: dropdown
+  - type: input
     id: version
     attributes:
       label: Affected Version
       description: |
-        If applicable, provide the version number or release tag where this
-        issue was encountered
-      options:
-        - v0.1.0
-      default: 0
+        If applicable, the version number or release tag where this issue was
+        encountered. A branch name or commit SHA is also fine.
+      placeholder: v0.1.0
     validations:
       required: false
   - type: textarea
