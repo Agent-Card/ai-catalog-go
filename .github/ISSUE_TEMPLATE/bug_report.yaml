@@ -29,7 +29,7 @@ body:
       description: |
         If applicable, the version number or release tag where this issue was
         encountered. A branch name or commit SHA is also fine.
-      placeholder: v0.2.1
+      placeholder: v0.1.0
     validations:
       required: false
   - type: textarea
