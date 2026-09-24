@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/Agent-Card/ai-catalog-go/catalog"
+	"github.com/Agent-Card/ai-catalog-go/trust"
 )
 
 // ConformanceLevel is the AI Catalog conformance level a document satisfies.
@@ -162,6 +163,7 @@ func collectTrustManifests(c *catalog.AICatalog) []*catalog.TrustManifest {
 func (v *validator) validateCatalog(c *catalog.AICatalog, path string, depth int) {
 	v.validateSpecVersion(c.SpecVersion, path+".specVersion")
 	v.validateHost(c.Host, path+".host")
+	v.validateSignatureAlgorithm(c.Signature, path+".signature")
 	v.validateExtensionKeys(c.Extensions, path+".extensions")
 	v.validateEntryUniqueness(c.Entries, path)
 
@@ -353,6 +355,8 @@ func (v *validator) validateSignedManifestMembers(manifest *catalog.TrustManifes
 		v.addError(path+".issuedAt",
 			"a trustManifest carrying a signature must include issuedAt")
 	}
+
+	v.validateSignatureAlgorithm(manifest.Signature, path+".signature")
 }
 
 func (v *validator) validateManifestTimestamps(manifest *catalog.TrustManifest, path string) {
@@ -392,6 +396,32 @@ func (v *validator) validateSubject(subject *catalog.Subject, path string) {
 
 	if subject.Digest == "" {
 		v.addError(path+".digest", "subject.digest is required and must not be empty")
+
+		return
+	}
+
+	if _, err := trust.ParseDigest(subject.Digest); err != nil {
+		v.addError(path+".digest", err.Error())
+	}
+}
+
+// validateSignatureAlgorithm rejects JWS alg "none" and the HMAC family. Those
+// cannot establish third-party trust; AnalyzeCatalog already says so, and
+// Validate must too or a signed-looking manifest is classified Trusted.
+func (v *validator) validateSignatureAlgorithm(signature, path string) {
+	if signature == "" {
+		return
+	}
+
+	algorithm, ok := trust.JWSAlgorithm(signature)
+	if !ok {
+		return
+	}
+
+	if trust.ForbiddenJWSAlgorithm(algorithm) {
+		v.addError(path, fmt.Sprintf(
+			"signature algorithm '%s' must be rejected; a trust manifest requires an asymmetric signature",
+			algorithm))
 	}
 }
 
