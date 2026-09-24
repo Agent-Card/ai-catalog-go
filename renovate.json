@@ -5,6 +5,7 @@
     "helpers:pinGitHubActionDigestsToSemver",
     ":semanticCommitTypeAll(chore)"
   ],
+  "configMigration": true,
   "enabledManagers": [
     "github-actions",
     "gomod",
@@ -13,8 +14,8 @@
   "customManagers": [
     {
       "customType": "regex",
-      "fileMatch": [
-        "^Taskfile\\.yaml$"
+      "managerFilePatterns": [
+        "/^Taskfile\\.yaml$/"
       ],
       "matchStrings": [
         "# renovate: datasource=(?<datasource>[a-z-]+) depName=(?<depName>[^\\s]+)\\s+[A-Z_]+_VERSION: \"(?<currentValue>[^\"]+)\""
@@ -23,32 +24,54 @@
   ],
   "packageRules": [
     {
+      "groupName": "Go",
+      "groupSlug": "go",
       "matchManagers": [
         "gomod"
       ],
-      "matchUpdateTypes": [
-        "patch"
+      "addLabels": [
+        "go"
       ],
-      "automerge": true
+      "description": [
+        "Add go label to PRs which bump Go module dependencies.",
+        "Group Go module updates in a single PR."
+      ]
     },
     {
+      "groupName": "Taskfile",
+      "groupSlug": "taskfile",
+      "matchFileNames": [
+        "Taskfile.yaml"
+      ],
+      "addLabels": [
+        "build"
+      ],
+      "description": [
+        "Add build label to PRs which are related to build tools defined in the Taskfile.",
+        "Group Taskfile dependency updates in a single PR."
+      ]
+    },
+    {
+      "groupName": "Github Actions",
+      "groupSlug": "github-actions",
       "matchManagers": [
         "github-actions"
       ],
-      "matchUpdateTypes": [
-        "minor",
-        "patch"
+      "addLabels": [
+        "ci"
       ],
-      "automerge": true
+      "description": [
+        "Add ci label to PRs which are related to Github Actions.",
+        "Group CI dependency updates in a single PR."
+      ]
     },
     {
-      "matchCategories": [
-        "vulnerability"
+      "matchJsonata": [
+        "$exists(vulnerabilityFixVersion) or isVulnerabilityAlert = true"
       ],
       "enabled": true,
-      "automerge": true,
-      "addLabels": [
-        "security"
+      "description": [
+        "Always allow vulnerability/security fixes, even when other rules disable specific dependencies."
       ]
     }
   ],
@@ -57,7 +80,17 @@
     "dependencies"
   ],
   "minimumReleaseAge": "7 days",
+  "schedule": [
+    "before 8am on Monday",
+    "before 8am on Wednesday",
+    "before 8am on Friday"
+  ],
   "prCreation": "not-pending",
+  "osvVulnerabilityAlerts": true,
+  "postUpdateOptions": [
+    "gomodTidy"
+  ],
+  "rebaseWhen": "behind-base-branch",
   "reviewersFromCodeOwners": true,
   "timezone": "Etc/UTC",
   "vulnerabilityAlerts": {
