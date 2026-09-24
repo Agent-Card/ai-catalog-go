@@ -17,6 +17,11 @@ vars:
   LICENSEI_VERSION: "0.9.0"
   LICENSEI_BIN: "{{ .BIN_DIR }}/licensei-{{.LICENSEI_VERSION}}"
 
+  # renovate: datasource=github-releases depName=renovatebot/renovate
+  RENOVATE_VERSION: "44.107.0"
+  RENOVATE_HOME: "{{ .BIN_DIR }}/renovate-{{.RENOVATE_VERSION}}"
+  RENOVATE_BIN: "{{ .RENOVATE_HOME }}/node_modules/.bin/renovate"
+
 tasks:
   default:
     cmds:
@@ -100,6 +105,12 @@ tasks:
       - for: { var: GO_MOD_DIR }
         cmd: go -C {{.ITEM}} mod tidy
 
+  deps:sync:
+    desc: Sync dependencies with Renovate (local and analytical unless RENOVATE_PLATFORM is set)
+    deps:
+      - deps:renovate
+    cmd: '"{{ .RENOVATE_BIN }}" --platform "${RENOVATE_PLATFORM:-local}"'
+
   deps:bin-dir:
     desc: Create bin directory
     internal: true
@@ -131,3 +142,12 @@ tasks:
       - chmod +x {{.LICENSEI_BIN}}
     status:
       - test -x {{.LICENSEI_BIN}}
+
+  deps:renovate:
+    desc: Install Renovate
+    internal: true
+    deps:
+      - deps:bin-dir
+    cmd: npm install --prefix {{.RENOVATE_HOME}} --no-audit --no-fund --loglevel=error renovate@{{.RENOVATE_VERSION}}
+    status:
+      - test -x {{.RENOVATE_BIN}}
