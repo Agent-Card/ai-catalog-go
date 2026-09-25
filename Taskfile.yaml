@@ -10,7 +10,7 @@ vars:
     sh: find . -name go.mod -exec dirname {} \;
 
   # renovate: datasource=github-releases depName=golangci/golangci-lint
-  GOLANGCI_LINT_VERSION: "2.11.3"
+  GOLANGCI_LINT_VERSION: "2.13.2"
   GOLANGCI_LINT_BIN: "{{ .BIN_DIR }}/golangci-lint-{{.GOLANGCI_LINT_VERSION}}"
 
   # renovate: datasource=github-releases depName=goph/licensei
