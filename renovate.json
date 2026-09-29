@@ -85,7 +85,6 @@
     "before 8am on Wednesday",
     "before 8am on Friday"
   ],
-  "prCreation": "not-pending",
   "osvVulnerabilityAlerts": true,
   "postUpdateOptions": [
     "gomodTidy"
