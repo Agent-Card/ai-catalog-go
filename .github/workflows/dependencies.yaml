@@ -58,3 +58,7 @@ jobs:
           RENOVATE_PR_BODY_TEMPLATE: "{{{header}}}{{{table}}}{{{warnings}}}{{{notes}}}{{{changelogs}}}"
           RENOVATE_DEPENDENCY_DASHBOARD_HEADER: ""
           RENOVATE_DEPENDENCY_DASHBOARD_O_S_V_VULNERABILITY_SUMMARY: "all"
+          ## Temporary: diagnosing runs that end with
+          ## result="repository-changed" after the first branch is written.
+          ## Revert to the default level once that is understood.
+          LOG_LEVEL: "debug"
