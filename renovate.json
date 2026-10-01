@@ -6,97 +6,73 @@
     ":semanticCommitTypeAll(chore)"
   ],
   "configMigration": true,
-  "enabledManagers": [
-    "github-actions",
-    "gomod",
-    "custom.regex"
-  ],
   "customManagers": [
     {
+      "currentValueTemplate": "{{currentValue}}",
       "customType": "regex",
+      "description": [
+        "Custom dependency manager for updating tool versions defined in the Taskfile."
+      ],
       "managerFilePatterns": [
         "/^Taskfile\\.yaml$/"
       ],
       "matchStrings": [
-        "# renovate: datasource=(?<datasource>[a-z-]+) depName=(?<depName>[^\\s]+)\\s+[A-Z_]+_VERSION: \"(?<currentValue>[^\"]+)\""
+        "(?m)^\\s*#\\s*renovate:\\s*datasource=(?<datasource>\\S+)\\s+depName=(?<depName>\\S+)(?:\\s+versioning=(?<versioning>\\S+))?(?:\\s+registryUrl=(?<registryUrl>\\S+))?\\s*\\r?\\n\\s*(?<varName>[A-Z0-9_]+)_VERSION\\s*:\\s*\"(?<currentValue>[^\"@\\s]+)\"\\s*$"
       ]
     }
   ],
+  "enabledManagers": [
+    "custom.regex",
+    "github-actions",
+    "gomod"
+  ],
+  "minimumReleaseAge": "7 days",
+  "osvVulnerabilityAlerts": true,
   "packageRules": [
     {
+      "description": [
+        "Group Go module updates in a single PR."
+      ],
       "groupName": "Go",
       "groupSlug": "go",
       "matchManagers": [
         "gomod"
-      ],
-      "addLabels": [
-        "go"
-      ],
-      "description": [
-        "Add go label to PRs which bump Go module dependencies.",
-        "Group Go module updates in a single PR."
       ]
     },
     {
+      "description": [
+        "Group Taskfile dependency updates in a single PR."
+      ],
       "groupName": "Taskfile",
       "groupSlug": "taskfile",
       "matchFileNames": [
         "Taskfile.yaml"
-      ],
-      "addLabels": [
-        "build"
-      ],
-      "description": [
-        "Add build label to PRs which are related to build tools defined in the Taskfile.",
-        "Group Taskfile dependency updates in a single PR."
       ]
     },
     {
+      "description": [
+        "Group CI dependency updates in a single PR."
+      ],
       "groupName": "Github Actions",
       "groupSlug": "github-actions",
       "matchManagers": [
         "github-actions"
-      ],
-      "addLabels": [
-        "ci"
-      ],
-      "description": [
-        "Add ci label to PRs which are related to Github Actions.",
-        "Group CI dependency updates in a single PR."
       ]
     },
     {
-      "matchJsonata": [
-        "$exists(vulnerabilityFixVersion) or isVulnerabilityAlert = true"
-      ],
-      "enabled": true,
       "description": [
         "Always allow vulnerability/security fixes, even when other rules disable specific dependencies."
+      ],
+      "enabled": true,
+      "matchJsonata": [
+        "$exists(vulnerabilityFixVersion) or isVulnerabilityAlert = true"
       ]
     }
   ],
-  "semanticCommits": "enabled",
-  "labels": [
-    "dependencies"
-  ],
-  "minimumReleaseAge": "7 days",
-  "schedule": [
-    "before 8am on Monday",
-    "before 8am on Wednesday",
-    "before 8am on Friday"
-  ],
-  "osvVulnerabilityAlerts": true,
-  "postUpdateOptions": [
-    "gomodTidy"
-  ],
   "rebaseWhen": "behind-base-branch",
-  "reviewersFromCodeOwners": true,
-  "timezone": "Etc/UTC",
+  "semanticCommits": "enabled",
   "vulnerabilityAlerts": {
     "enabled": true,
-    "labels": [
-      "security"
-    ],
     "minimumReleaseAge": null,
     "schedule": [
       "at any time"
