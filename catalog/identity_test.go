@@ -6,15 +6,23 @@ package catalog
 
 import "testing"
 
+const (
+	acmeDomain  = "acme.com"
+	acmeAgentID = "urn:air:acme.com:agent:finance"
+	acmeDIDWeb  = "did:web:acme.com"
+
+	domainlessID = "urn:example:agent"
+)
+
 func TestPublisherDomain(t *testing.T) {
 	cases := []struct {
 		identifier string
 		want       string
 		wantOK     bool
 	}{
-		{"urn:air:Acme.com:agent:finance", "acme.com", true},
-		{"URN:AIR:acme.com:agent:finance", "acme.com", true},
-		{"urn:example:agent", "", false},
+		{"urn:air:Acme.com:agent:finance", acmeDomain, true},
+		{"URN:AIR:acme.com:agent:finance", acmeDomain, true},
+		{domainlessID, "", false},
 		{"urn:air:", "", false},
 	}
 
@@ -33,11 +41,11 @@ func TestIdentityDomain(t *testing.T) {
 		want     string
 		wantOK   bool
 	}{
-		{"did:web:acme.com", "acme.com", true},
-		{"did:web:acme.com%3A8443:user", "acme.com", true},
-		{"urn:air:acme.com:agent:finance", "acme.com", true},
-		{"spiffe://acme.com/workload", "acme.com", true},
-		{"https://user@acme.com:8443/path", "acme.com", true},
+		{acmeDIDWeb, acmeDomain, true},
+		{"did:web:acme.com%3A8443:user", acmeDomain, true},
+		{acmeAgentID, acmeDomain, true},
+		{"spiffe://acme.com/workload", acmeDomain, true},
+		{"https://user@acme.com:8443/path", acmeDomain, true},
 		{"plain-identifier", "", false},
 		{"urn:acme:agent:finance", "", false},
 	}
@@ -61,14 +69,14 @@ func TestIdentityBindsToEntry(t *testing.T) {
 	}{
 		{
 			name:        "aligned by domain without exact equality",
-			identifier:  "urn:air:acme.com:agent:finance",
-			identity:    "did:web:acme.com",
+			identifier:  acmeAgentID,
+			identity:    acmeDIDWeb,
 			wantAligned: true,
 			wantApplies: true,
 		},
 		{
 			name:        "different domain",
-			identifier:  "urn:air:acme.com:agent:finance",
+			identifier:  acmeAgentID,
 			identity:    "did:web:evil.example",
 			wantAligned: false,
 			wantApplies: true,
@@ -77,14 +85,14 @@ func TestIdentityBindsToEntry(t *testing.T) {
 			// An identity with no trust domain cannot align, so the binding
 			// check must fail rather than be skipped.
 			name:        "identity without a trust domain",
-			identifier:  "urn:air:acme.com:agent:finance",
+			identifier:  acmeAgentID,
 			identity:    "urn:acme:agent:finance",
 			wantAligned: false,
 			wantApplies: true,
 		},
 		{
 			name:        "non-URI identity",
-			identifier:  "urn:air:acme.com:agent:finance",
+			identifier:  acmeAgentID,
 			identity:    "plain-identifier",
 			wantAligned: false,
 			wantApplies: true,
@@ -93,14 +101,14 @@ func TestIdentityBindsToEntry(t *testing.T) {
 			// Without a urn:air identifier there is no publisher domain to bind
 			// against, so the rule does not apply.
 			name:        "entry without a publisher domain",
-			identifier:  "urn:example:agent",
-			identity:    "did:web:acme.com",
+			identifier:  domainlessID,
+			identity:    acmeDIDWeb,
 			wantAligned: true,
 			wantApplies: false,
 		},
 		{
 			name:        "neither side carries a domain",
-			identifier:  "urn:example:agent",
+			identifier:  domainlessID,
 			identity:    "anything",
 			wantAligned: true,
 			wantApplies: false,

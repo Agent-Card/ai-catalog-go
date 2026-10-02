@@ -63,7 +63,7 @@ func (c AICatalog) MarshalJSON() ([]byte, error) {
 
 // GetByID returns the first entry whose Identifier equals id, and reports
 // whether one was found.
-func (c *AICatalog) GetByID(id string) (*CatalogEntry, bool) {
+func (c AICatalog) GetByID(id string) (*CatalogEntry, bool) {
 	for i := range c.Entries {
 		if c.Entries[i].Identifier == id {
 			return &c.Entries[i], true
@@ -75,7 +75,7 @@ func (c *AICatalog) GetByID(id string) (*CatalogEntry, bool) {
 
 // GetByType returns all entries whose Type equals mediaType, or nil when none
 // match.
-func (c *AICatalog) GetByType(mediaType string) []*CatalogEntry {
+func (c AICatalog) GetByType(mediaType string) []*CatalogEntry {
 	var results []*CatalogEntry
 
 	for i := range c.Entries {
@@ -89,7 +89,7 @@ func (c *AICatalog) GetByType(mediaType string) []*CatalogEntry {
 
 // GetByTag returns all entries carrying tag (exact match), or nil when none
 // match.
-func (c *AICatalog) GetByTag(tag string) []*CatalogEntry {
+func (c AICatalog) GetByTag(tag string) []*CatalogEntry {
 	var results []*CatalogEntry
 
 	for i := range c.Entries {
@@ -103,7 +103,7 @@ func (c *AICatalog) GetByTag(tag string) []*CatalogEntry {
 
 // GetByPublisher returns all entries whose Publisher.Identifier equals id, or
 // nil when none match.
-func (c *AICatalog) GetByPublisher(id string) []*CatalogEntry {
+func (c AICatalog) GetByPublisher(id string) []*CatalogEntry {
 	var results []*CatalogEntry
 
 	for i := range c.Entries {
@@ -117,7 +117,7 @@ func (c *AICatalog) GetByPublisher(id string) []*CatalogEntry {
 
 // Search returns all entries where query appears (case-insensitively) in the
 // Identifier, DisplayName, Description, or any Tags value.
-func (c *AICatalog) Search(query string) []*CatalogEntry {
+func (c AICatalog) Search(query string) []*CatalogEntry {
 	lowered := strings.ToLower(query)
 
 	var results []*CatalogEntry
@@ -135,7 +135,7 @@ func (c *AICatalog) Search(query string) []*CatalogEntry {
 // SearchByRegex returns all entries where pattern (used verbatim) matches the
 // Identifier, DisplayName, Description, or any Tags value. It errors on an
 // invalid pattern.
-func (c *AICatalog) SearchByRegex(pattern string) ([]*CatalogEntry, error) {
+func (c AICatalog) SearchByRegex(pattern string) ([]*CatalogEntry, error) {
 	re, err := regexp.Compile(pattern)
 	if err != nil {
 		return nil, fmt.Errorf("compile regex: %w", err)
@@ -154,7 +154,7 @@ func (c *AICatalog) SearchByRegex(pattern string) ([]*CatalogEntry, error) {
 }
 
 // ToJSON serializes the catalog to compact JSON.
-func (c *AICatalog) ToJSON() ([]byte, error) {
+func (c AICatalog) ToJSON() ([]byte, error) {
 	data, err := json.Marshal(c)
 	if err != nil {
 		return nil, fmt.Errorf("marshal catalog: %w", err)
@@ -164,7 +164,7 @@ func (c *AICatalog) ToJSON() ([]byte, error) {
 }
 
 // ToJSONIndent serializes the catalog to indented (pretty) JSON.
-func (c *AICatalog) ToJSONIndent() ([]byte, error) {
+func (c AICatalog) ToJSONIndent() ([]byte, error) {
 	data, err := json.MarshalIndent(c, "", "  ")
 	if err != nil {
 		return nil, fmt.Errorf("marshal catalog: %w", err)
@@ -174,7 +174,7 @@ func (c *AICatalog) ToJSONIndent() ([]byte, error) {
 }
 
 // WriteJSON writes the catalog as indented (pretty) JSON to w.
-func (c *AICatalog) WriteJSON(w io.Writer) error {
+func (c AICatalog) WriteJSON(w io.Writer) error {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 

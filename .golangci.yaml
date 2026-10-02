@@ -6,6 +6,7 @@ linters:
     - embeddedstructfieldcheck # Allow embedded fields in any position
     - err113
     - exhaustruct # Allow structures with uninitialized fields
+    - exhaustruct_v5 # Allow structures with uninitialized fields
     - funcorder # Allow flexible function ordering within structs
     - funlen # Allow long functions
     - godoclint # Allow flexible godoc comment styles
@@ -39,7 +40,7 @@ linters:
     paths:
       - third_party$
       - builtin$
-      - examples$
+      - ^examples/
 formatters:
   enable:
     - gci
@@ -51,4 +52,4 @@ formatters:
     paths:
       - third_party$
       - builtin$
-      - examples$
+      - ^examples/
