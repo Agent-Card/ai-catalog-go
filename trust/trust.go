@@ -374,7 +374,7 @@ func analyzeSignature(path string, manifest *catalog.TrustManifest, findings []F
 }
 
 func analyzeSignatureAlgorithm(path, signature string, findings []Finding) []Finding {
-	algorithm, ok := jwsAlgorithm(signature)
+	algorithm, ok := JWSAlgorithm(signature)
 	if !ok {
 		return append(findings, Finding{
 			Severity: SeverityError,
@@ -384,7 +384,7 @@ func analyzeSignatureAlgorithm(path, signature string, findings []Finding) []Fin
 	}
 
 	switch {
-	case isForbiddenJWSAlgorithm(algorithm):
+	case ForbiddenJWSAlgorithm(algorithm):
 		return append(findings, Finding{
 			Severity: SeverityError,
 			Path:     path,
@@ -579,18 +579,18 @@ func looksLikeDetachedJWS(signature string) bool {
 // asymmetric algorithms producers must use and consumers must support.
 var allowedJWSAlgorithms = []string{"ES256", "ES384", "EdDSA", "PS256", "PS384", "RS256"}
 
-// isForbiddenJWSAlgorithm reports whether algorithm cannot establish
+// ForbiddenJWSAlgorithm reports whether algorithm cannot establish
 // third-party trust: "none" carries no proof, and the HMAC family only proves
 // possession of a shared secret. Matched case-insensitively.
-func isForbiddenJWSAlgorithm(algorithm string) bool {
+func ForbiddenJWSAlgorithm(algorithm string) bool {
 	normalized := strings.ToUpper(algorithm)
 
 	return normalized == "NONE" || strings.HasPrefix(normalized, "HS")
 }
 
-// jwsAlgorithm returns the "alg" declared by a JWS compact serialization's
+// JWSAlgorithm returns the "alg" declared by a JWS compact serialization's
 // protected header.
-func jwsAlgorithm(signature string) (string, bool) {
+func JWSAlgorithm(signature string) (string, bool) {
 	encoded, _, _ := strings.Cut(signature, ".")
 
 	header, err := base64.RawURLEncoding.DecodeString(encoded)

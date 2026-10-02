@@ -249,6 +249,68 @@ func TestValidate_RejectsHollowTrustManifest(t *testing.T) {
 	}
 }
 
+func TestValidate_RejectsNoneAlgAndWeakDigest(t *testing.T) {
+	// Repro for #15: Validate used to treat alg:none + md5 as Trusted.
+	result := validate.Validate(mustParse(t, `{
+		"specVersion": "1.0",
+		"host": { "displayName": "Acme" },
+		"entries": [{
+			"identifier": "urn:air:acme.com:agent:finance",
+			"type": "application/a2a-agent-card+json",
+			"url": "https://acme.com/finance.json",
+			"trustManifest": {
+				"identity": "did:web:acme.com",
+				"issuedAt": "2026-01-01T00:00:00Z",
+				"signature": "eyJhbGciOiJub25lIn0..c2ln",
+				"subject": {
+					"type": "application/a2a-agent-card+json",
+					"url": "https://acme.com/finance.json",
+					"digest": "md5:0123456789abcdef0123456789abcdef"
+				}
+			}
+		}]
+	}`))
+
+	if result.IsValid {
+		t.Fatal("expected invalid catalog, got IsValid=true")
+	}
+
+	if result.ConformanceLevel == validate.Trusted {
+		t.Errorf("level = %v, want not Trusted", result.ConformanceLevel)
+	}
+
+	if !hasError(result, "signature algorithm 'none' must be rejected") {
+		t.Errorf("expected alg:none error, got: %+v", result.Errors)
+	}
+
+	if !hasError(result, `digest algorithm is weaker than SHA-256: "md5"`) {
+		t.Errorf("expected weak digest error, got: %+v", result.Errors)
+	}
+}
+
+func TestValidate_RejectsHMACSignatureAlgorithm(t *testing.T) {
+	result := validate.Validate(parse(t, fixture.WeakSignatureJSON))
+
+	if result.IsValid {
+		t.Fatal("expected invalid catalog, got IsValid=true")
+	}
+
+	wants := []string{
+		"signature algorithm 'none' must be rejected",
+		"signature algorithm 'HS256' must be rejected",
+	}
+
+	for _, want := range wants {
+		if !hasError(result, want) {
+			t.Errorf("expected error containing %q, got: %+v", want, result.Errors)
+		}
+	}
+
+	if result.ConformanceLevel == validate.Trusted {
+		t.Errorf("level = %v, want not Trusted", result.ConformanceLevel)
+	}
+}
+
 func TestValidate_RejectsSignatureWithoutSubjectAndIssuedAt(t *testing.T) {
 	result := validate.Validate(parse(t, fixture.InvalidJSON))
 
