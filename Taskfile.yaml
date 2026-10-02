@@ -10,7 +10,7 @@ vars:
     sh: find . -name go.mod -exec dirname {} \;
 
   # renovate: datasource=github-releases depName=golangci/golangci-lint
-  GOLANGCI_LINT_VERSION: "2.11.3"
+  GOLANGCI_LINT_VERSION: "2.14.0"
   GOLANGCI_LINT_BIN: "{{ .BIN_DIR }}/golangci-lint-{{.GOLANGCI_LINT_VERSION}}"
 
   # renovate: datasource=github-releases depName=goph/licensei
@@ -18,7 +18,7 @@ vars:
   LICENSEI_BIN: "{{ .BIN_DIR }}/licensei-{{.LICENSEI_VERSION}}"
 
   # renovate: datasource=github-releases depName=renovatebot/renovate
-  RENOVATE_VERSION: "44.107.0"
+  RENOVATE_VERSION: "44.115.4"
   RENOVATE_HOME: "{{ .BIN_DIR }}/renovate-{{.RENOVATE_VERSION}}"
   RENOVATE_BIN: "{{ .RENOVATE_HOME }}/node_modules/.bin/renovate"
 

@@ -14,7 +14,7 @@ import (
 // GetByIDAndVersion returns the entry whose Identifier equals id and Version
 // equals version, and reports whether one was found. The pair is unique within
 // a catalog.
-func (c *AICatalog) GetByIDAndVersion(id, version string) (*CatalogEntry, bool) {
+func (c AICatalog) GetByIDAndVersion(id, version string) (*CatalogEntry, bool) {
 	for i := range c.Entries {
 		if c.Entries[i].Identifier == id && c.Entries[i].Version == version {
 			return &c.Entries[i], true
@@ -26,7 +26,7 @@ func (c *AICatalog) GetByIDAndVersion(id, version string) (*CatalogEntry, bool) 
 
 // Versions returns every entry whose Identifier equals id, in document order,
 // or nil when none match.
-func (c *AICatalog) Versions(id string) []*CatalogEntry {
+func (c AICatalog) Versions(id string) []*CatalogEntry {
 	var results []*CatalogEntry
 
 	for i := range c.Entries {
@@ -42,7 +42,7 @@ func (c *AICatalog) Versions(id string) []*CatalogEntry {
 // Entries with a valid semver Version are preferred and compared by semver
 // (ties broken by UpdatedAt); otherwise the most recent UpdatedAt wins, with
 // document order breaking remaining ties.
-func (c *AICatalog) GetLatest(id string) (*CatalogEntry, bool) {
+func (c AICatalog) GetLatest(id string) (*CatalogEntry, bool) {
 	matches := c.Versions(id)
 	if len(matches) == 0 {
 		return nil, false
