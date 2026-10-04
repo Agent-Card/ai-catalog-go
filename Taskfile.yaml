@@ -18,7 +18,7 @@ vars:
   LICENSEI_BIN: "{{ .BIN_DIR }}/licensei-{{.LICENSEI_VERSION}}"
 
   # renovate: datasource=github-releases depName=renovatebot/renovate
-  RENOVATE_VERSION: "44.115.4"
+  RENOVATE_VERSION: "44.115.13"
   RENOVATE_HOME: "{{ .BIN_DIR }}/renovate-{{.RENOVATE_VERSION}}"
   RENOVATE_BIN: "{{ .RENOVATE_HOME }}/node_modules/.bin/renovate"
 
