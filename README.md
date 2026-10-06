@@ -140,6 +140,8 @@ ok, err := trust.VerifyDigest("sha256:9f86d0...", data)
 canonical, err := trust.CanonicalizeTrustManifest(entry.TrustManifest)
 ```
 
+A manifest read from a document is canonicalized from the bytes it was read from, so members the SDK does not model, empty arrays and objects, empty strings and nulls are covered as published. A manifest built in code, or changed after it was read, is canonicalized from its serialization instead; sign the string `CanonicalizeTrustManifest` returns for it. `TrustManifest.Raw()` returns the bytes a manifest was read from.
+
 A signature covers the document as published, so verify against the original bytes rather than a re-serialized document — otherwise any member this SDK does not model drops out of the payload and the signature will not match. The built-in providers keep those bytes and expose them through `catalog.RawSource`:
 
 ```go

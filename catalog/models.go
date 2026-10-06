@@ -4,7 +4,12 @@
 
 package catalog
 
-import "encoding/json"
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"reflect"
+)
 
 // HostInfo identifies the operator of an AI Catalog.
 type HostInfo struct {
@@ -41,8 +46,8 @@ type TrustManifest struct {
 
 	IdentityType string           `json:"identityType,omitempty"`
 	TrustSchema  *TrustSchema     `json:"trustSchema,omitempty"`
-	Attestations []Attestation    `json:"attestations,omitempty"`
-	Provenance   []ProvenanceLink `json:"provenance,omitempty"`
+	Attestations []Attestation    `json:"attestations,omitzero"`
+	Provenance   []ProvenanceLink `json:"provenance,omitzero"`
 
 	PrivacyPolicyURL  string `json:"privacyPolicyUrl,omitempty"`
 	TermsOfServiceURL string `json:"termsOfServiceUrl,omitempty"`
@@ -66,7 +71,45 @@ type TrustManifest struct {
 
 	// Extensions holds custom or vendor-specific members. Keys must be a URL
 	// or a reverse-DNS string to keep vendors from colliding.
-	Extensions map[string]json.RawMessage `json:"extensions,omitempty"`
+	Extensions map[string]json.RawMessage `json:"extensions,omitzero"`
+
+	// raw holds the JSON this manifest was decoded from; see Raw.
+	raw json.RawMessage
+}
+
+// UnmarshalJSON decodes a manifest and keeps a copy of the bytes it was decoded
+// from, so a signature can be checked against the document as it was published
+// rather than against a re-serialization of this lossy struct.
+func (m *TrustManifest) UnmarshalJSON(data []byte) error {
+	// plain has no methods, so decoding into it does not recurse.
+	type plain TrustManifest
+
+	fresh := reflect.ValueOf(m).Elem().IsZero()
+
+	if err := json.Unmarshal(data, (*plain)(m)); err != nil {
+		return fmt.Errorf("decode trust manifest: %w", err)
+	}
+
+	// Decoding into a manifest that already holds data merges members, so the
+	// bytes alone no longer describe it.
+	if fresh && !bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
+		m.raw = bytes.Clone(data)
+	} else {
+		m.raw = nil
+	}
+
+	return nil
+}
+
+// Raw returns a copy of the JSON the manifest was decoded from, or nil if it
+// was built in code. It reflects the manifest as decoded: changing a field
+// afterwards does not change it.
+func (m *TrustManifest) Raw() []byte {
+	if m == nil || m.raw == nil {
+		return nil
+	}
+
+	return bytes.Clone(m.raw)
 }
 
 // Subject binds a TrustManifest to the artifact it describes, so a signature
@@ -89,7 +132,7 @@ type TrustSchema struct {
 	Identifier          string   `json:"identifier"`
 	Version             string   `json:"version"`
 	GovernanceURI       string   `json:"governanceUri,omitempty"`
-	VerificationMethods []string `json:"verificationMethods,omitempty"`
+	VerificationMethods []string `json:"verificationMethods,omitzero"`
 }
 
 // Attestation is verifiable proof of a claim about an artifact (compliance
