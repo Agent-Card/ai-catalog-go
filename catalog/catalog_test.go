@@ -6,6 +6,7 @@ package catalog
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -464,5 +465,94 @@ func TestSearchByRegex_InvalidPattern(t *testing.T) {
 
 	if _, err := c.SearchByRegex("[invalid("); err == nil {
 		t.Fatal("expected error for invalid regex, got nil")
+	}
+}
+
+func TestTrustManifest_RawKeepsDecodedBytes(t *testing.T) {
+	const published = `{ "identity": "urn:example:a", "attestations": [] }`
+
+	var manifest TrustManifest
+	if err := json.Unmarshal([]byte(published), &manifest); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	if got := manifest.Raw(); string(got) != published {
+		t.Fatalf("Raw = %q, want %q", got, published)
+	}
+
+	// The caller gets a copy, so it cannot rewrite what the manifest remembers.
+	manifest.Raw()[0] = 'X'
+
+	if got := manifest.Raw(); string(got) != published {
+		t.Errorf("Raw changed through a returned slice: %q", got)
+	}
+
+	// Serializing uses the fields, not the remembered bytes.
+	manifest.Identity = "urn:example:b"
+
+	out, err := json.Marshal(&manifest)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	if string(out) != `{"identity":"urn:example:b","attestations":[]}` {
+		t.Errorf("marshal = %s", out)
+	}
+}
+
+func TestTrustManifest_RawIsNilWhenNotDecoded(t *testing.T) {
+	if (&TrustManifest{Identity: "urn:example:a"}).Raw() != nil {
+		t.Error("a manifest built in code should have no raw bytes")
+	}
+
+	var absent *TrustManifest
+	if absent.Raw() != nil {
+		t.Error("nil manifest should have no raw bytes")
+	}
+
+	var manifest TrustManifest
+	if err := json.Unmarshal([]byte(`null`), &manifest); err != nil {
+		t.Fatalf("decode null: %v", err)
+	}
+
+	if manifest.Raw() != nil {
+		t.Error("null should leave no raw bytes")
+	}
+}
+
+func TestTrustManifest_DecodingIntoExistingManifestDropsRaw(t *testing.T) {
+	var manifest TrustManifest
+	if err := json.Unmarshal([]byte(`{"identity":"urn:example:a"}`), &manifest); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	if err := json.Unmarshal([]byte(`{"issuedAt":"2026-01-01T00:00:00Z"}`), &manifest); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	if manifest.Identity != "urn:example:a" || manifest.IssuedAt == "" {
+		t.Fatalf("members should merge: %+v", manifest)
+	}
+
+	if manifest.Raw() != nil {
+		t.Errorf("merged manifest should not claim a single source: %s", manifest.Raw())
+	}
+}
+
+func TestTrustManifest_EmptyCollectionsSurviveRoundTrip(t *testing.T) {
+	const published = `{"identity":"urn:example:a","attestations":[],"provenance":[],"extensions":{}}`
+
+	var manifest TrustManifest
+	if err := json.Unmarshal([]byte(published), &manifest); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	out, err := json.Marshal(&manifest)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	if string(out) != published {
+		t.Errorf("marshal = %s, want %s", out, published)
 	}
 }

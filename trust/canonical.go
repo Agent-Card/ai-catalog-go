@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"unicode/utf8"
 
 	"github.com/Agent-Card/ai-catalog-go/catalog"
@@ -88,13 +89,25 @@ func CanonicalizeForSignature(data []byte) ([]byte, error) {
 }
 
 // CanonicalizeTrustManifest returns the canonical signing payload for a trust
-// manifest. It only covers members represented by catalog.TrustManifest; verify
-// against the manifest's original bytes with CanonicalizeForSignature when the
-// producer may have included members this SDK does not model.
+// manifest, with its "signature" member removed.
+//
+// A manifest decoded from JSON is canonicalized from the bytes it was decoded
+// from, so members this SDK does not model, empty arrays and objects, empty
+// strings and nulls are all covered, exactly as the producer signed them. A
+// manifest built in code, or changed after decoding, has no such bytes and is
+// canonicalized from its serialization instead. That form keeps non-nil empty
+// slices and maps as [] and {}, but a nil one is omitted and an empty string is
+// dropped, so a producer signing a built manifest should sign what this returns.
 func CanonicalizeTrustManifest(manifest *catalog.TrustManifest) (string, error) {
-	raw, err := json.Marshal(manifest)
-	if err != nil {
-		return "", fmt.Errorf("marshal trust manifest: %w", err)
+	raw := decodedBytes(manifest)
+
+	if raw == nil {
+		var err error
+
+		raw, err = json.Marshal(manifest)
+		if err != nil {
+			return "", fmt.Errorf("marshal trust manifest: %w", err)
+		}
 	}
 
 	canonical, err := CanonicalizeForSignature(raw)
@@ -103,4 +116,20 @@ func CanonicalizeTrustManifest(manifest *catalog.TrustManifest) (string, error) 
 	}
 
 	return string(canonical), nil
+}
+
+// decodedBytes returns the bytes manifest was decoded from, or nil when there
+// are none or when manifest no longer matches them.
+func decodedBytes(manifest *catalog.TrustManifest) []byte {
+	raw := manifest.Raw()
+	if raw == nil {
+		return nil
+	}
+
+	var decoded catalog.TrustManifest
+	if err := json.Unmarshal(raw, &decoded); err != nil || !reflect.DeepEqual(&decoded, manifest) {
+		return nil
+	}
+
+	return raw
 }

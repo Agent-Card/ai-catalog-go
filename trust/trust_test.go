@@ -5,6 +5,7 @@
 package trust_test
 
 import (
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -120,6 +121,121 @@ func TestCanonicalizeTrustManifest_StripsSignatureAndSortsKeys(t *testing.T) {
 		if !strings.Contains(canonical, member) {
 			t.Errorf("expected %q in the signed payload: %s", member, canonical)
 		}
+	}
+}
+
+// A manifest read from a document must canonicalize to what a verifier
+// computes from the published bytes, whatever shape those bytes have. The
+// struct cannot represent several of these shapes, so re-serializing it signs a
+// different document than the producer did.
+func TestCanonicalizeTrustManifest_MatchesPublishedBytes(t *testing.T) {
+	cases := map[string]string{
+		"empty attestations":  `{"identity":"urn:example:a","attestations":[]}`,
+		"empty provenance":    `{"identity":"urn:example:a","provenance":[]}`,
+		"empty extensions":    `{"identity":"urn:example:a","extensions":{}}`,
+		"empty string member": `{"identity":"urn:example:a","identityType":""}`,
+		"null member":         `{"identity":"urn:example:a","privacyPolicyUrl":null}`,
+		"unknown member":      `{"identity":"urn:example:a","com.example.extra":{"a":1}}`,
+		"unknown nested":      `{"identity":"urn:example:a","attestations":[{"type":"t","uri":"https://example.com/a","x":true}]}`,
+		"empty nested array":  `{"identity":"urn:example:a","trustSchema":{"identifier":"i","version":"1","verificationMethods":[]}}`,
+		"whitespace, order": `{
+  "signature": "ZXlK..",
+  "subject": {"url": "https://example.com/a", "digest": "sha256:` + testSHA256 + `", "type": "text/plain"},
+  "identity": "urn:example:a"
+}`,
+	}
+
+	for name, published := range cases {
+		t.Run(name, func(t *testing.T) {
+			want, err := trust.CanonicalizeForSignature([]byte(published))
+			if err != nil {
+				t.Fatalf("CanonicalizeForSignature error: %v", err)
+			}
+
+			var manifest catalog.TrustManifest
+			if err := json.Unmarshal([]byte(published), &manifest); err != nil {
+				t.Fatalf("decode manifest: %v", err)
+			}
+
+			got, err := trust.CanonicalizeTrustManifest(&manifest)
+			if err != nil {
+				t.Fatalf("CanonicalizeTrustManifest error: %v", err)
+			}
+
+			if got != string(want) {
+				t.Errorf("canonical form differs from the published bytes\n got: %s\nwant: %s", got, want)
+			}
+		})
+	}
+}
+
+// The same holds for a manifest reached through a parsed catalog.
+func TestCanonicalizeTrustManifest_FromParsedCatalog(t *testing.T) {
+	const doc = `{"specVersion":"1.0","entries":[{"identifier":"urn:example:a","type":"text/plain",` +
+		`"url":"https://example.com/a","trustManifest":{"identity":"urn:example:a","attestations":[],` +
+		`"com.example.extra":1,"signature":"ZXlK.."}}]}`
+
+	c := parse(t, []byte(doc))
+
+	got, err := trust.CanonicalizeTrustManifest(c.Entries[0].TrustManifest)
+	if err != nil {
+		t.Fatalf("CanonicalizeTrustManifest error: %v", err)
+	}
+
+	const want = `{"attestations":[],"com.example.extra":1,"identity":"urn:example:a"}`
+	if got != want {
+		t.Errorf("canonical form = %s, want %s", got, want)
+	}
+}
+
+// Once a decoded manifest is changed, the bytes it was decoded from no longer
+// describe it; the payload must follow the change rather than the old bytes.
+func TestCanonicalizeTrustManifest_FollowsChangesAfterDecoding(t *testing.T) {
+	var manifest catalog.TrustManifest
+	if err := json.Unmarshal([]byte(`{"identity":"urn:example:a","com.example.extra":1}`), &manifest); err != nil {
+		t.Fatalf("decode manifest: %v", err)
+	}
+
+	manifest.Identity = "urn:example:b"
+
+	got, err := trust.CanonicalizeTrustManifest(&manifest)
+	if err != nil {
+		t.Fatalf("CanonicalizeTrustManifest error: %v", err)
+	}
+
+	if !strings.Contains(got, "urn:example:b") || strings.Contains(got, "urn:example:a") {
+		t.Errorf("payload should reflect the changed identity: %s", got)
+	}
+}
+
+// A manifest built in code has no published bytes; empty slices and maps the
+// caller set explicitly are kept rather than silently dropped.
+func TestCanonicalizeTrustManifest_BuiltManifestKeepsEmptyCollections(t *testing.T) {
+	manifest := &catalog.TrustManifest{
+		Identity:     "urn:example:a",
+		Attestations: []catalog.Attestation{},
+		Provenance:   []catalog.ProvenanceLink{},
+		Extensions:   map[string]json.RawMessage{},
+	}
+
+	got, err := trust.CanonicalizeTrustManifest(manifest)
+	if err != nil {
+		t.Fatalf("CanonicalizeTrustManifest error: %v", err)
+	}
+
+	const want = `{"attestations":[],"extensions":{},"identity":"urn:example:a","provenance":[]}`
+	if got != want {
+		t.Errorf("canonical form = %s, want %s", got, want)
+	}
+
+	// Unset collections stay out.
+	got, err = trust.CanonicalizeTrustManifest(&catalog.TrustManifest{Identity: "urn:example:a"})
+	if err != nil {
+		t.Fatalf("CanonicalizeTrustManifest error: %v", err)
+	}
+
+	if got != `{"identity":"urn:example:a"}` {
+		t.Errorf("canonical form = %s, want identity only", got)
 	}
 }
 
