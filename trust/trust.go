@@ -9,9 +9,7 @@ package trust
 import (
 	"crypto/sha256"
 	"crypto/sha512"
-	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -19,6 +17,7 @@ import (
 	"time"
 
 	"github.com/Agent-Card/ai-catalog-go/catalog"
+	"github.com/Agent-Card/ai-catalog-go/internal/jws"
 )
 
 // Digest-parsing errors. Callers may test for these with errors.Is.
@@ -374,32 +373,25 @@ func analyzeSignature(path string, manifest *catalog.TrustManifest, findings []F
 }
 
 func analyzeSignatureAlgorithm(path, signature string, findings []Finding) []Finding {
-	algorithm, ok := jwsAlgorithm(signature)
-	if !ok {
-		return append(findings, Finding{
-			Severity: SeverityError,
-			Path:     path,
-			Message:  "signature JWS header must be base64url-encoded JSON declaring an 'alg'",
-		})
-	}
+	result := jws.Check(signature)
 
-	switch {
-	case isForbiddenJWSAlgorithm(algorithm):
+	switch result.Problem {
+	case jws.Malformed, jws.Forbidden:
 		return append(findings, Finding{
 			Severity: SeverityError,
 			Path:     path,
-			Message: fmt.Sprintf(
-				"signature algorithm '%s' must be rejected; a trust manifest requires an asymmetric signature",
-				algorithm),
+			Message:  result.Message,
 		})
-	case !slices.Contains(allowedJWSAlgorithms, algorithm):
-		return append(findings, Finding{
-			Severity: SeverityWarning,
-			Path:     path,
-			Message: fmt.Sprintf(
-				"signature algorithm '%s' is outside the specification allowlist (%s)",
-				algorithm, strings.Join(allowedJWSAlgorithms, ", ")),
-		})
+	case jws.OK:
+		if !slices.Contains(allowedJWSAlgorithms, result.Algorithm) {
+			return append(findings, Finding{
+				Severity: SeverityWarning,
+				Path:     path,
+				Message: fmt.Sprintf(
+					"signature algorithm '%s' is outside the specification allowlist (%s)",
+					result.Algorithm, strings.Join(allowedJWSAlgorithms, ", ")),
+			})
+		}
 	}
 
 	return findings
@@ -578,33 +570,3 @@ func looksLikeDetachedJWS(signature string) bool {
 // allowedJWSAlgorithms is the spec's signature algorithm allowlist: the
 // asymmetric algorithms producers must use and consumers must support.
 var allowedJWSAlgorithms = []string{"ES256", "ES384", "EdDSA", "PS256", "PS384", "RS256"}
-
-// isForbiddenJWSAlgorithm reports whether algorithm cannot establish
-// third-party trust: "none" carries no proof, and the HMAC family only proves
-// possession of a shared secret. Matched case-insensitively.
-func isForbiddenJWSAlgorithm(algorithm string) bool {
-	normalized := strings.ToUpper(algorithm)
-
-	return normalized == "NONE" || strings.HasPrefix(normalized, "HS")
-}
-
-// jwsAlgorithm returns the "alg" declared by a JWS compact serialization's
-// protected header.
-func jwsAlgorithm(signature string) (string, bool) {
-	encoded, _, _ := strings.Cut(signature, ".")
-
-	header, err := base64.RawURLEncoding.DecodeString(encoded)
-	if err != nil {
-		return "", false
-	}
-
-	var parsed struct {
-		Algorithm string `json:"alg"`
-	}
-
-	if err := json.Unmarshal(header, &parsed); err != nil || parsed.Algorithm == "" {
-		return "", false
-	}
-
-	return parsed.Algorithm, true
-}
