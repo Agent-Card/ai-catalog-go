@@ -51,6 +51,17 @@ func hasError(result validate.Result, substr string) bool {
 	return false
 }
 
+// hasErrorAt reports whether an error at or under path contains substr.
+func hasErrorAt(result validate.Result, path, substr string) bool {
+	for _, d := range result.Errors {
+		if strings.HasPrefix(d.Path, path) && strings.Contains(d.Message, substr) {
+			return true
+		}
+	}
+
+	return false
+}
+
 func hasWarning(result validate.Result, substr string) bool {
 	for _, d := range result.Warnings {
 		if strings.Contains(d.Message, substr) {
@@ -246,6 +257,144 @@ func TestValidate_RejectsHollowTrustManifest(t *testing.T) {
 
 	if !hasError(result, "must carry at least one substantive member") {
 		t.Errorf("expected hollow trust manifest error, got: %+v", result.Errors)
+	}
+}
+
+func TestValidate_RejectsWeakSignaturesAndDigests(t *testing.T) {
+	result := validate.Validate(parse(t, fixture.WeakSignatureJSON))
+
+	if result.IsValid {
+		t.Fatal("expected invalid catalog, got IsValid=true")
+	}
+
+	if result.ConformanceLevel == validate.Trusted {
+		t.Errorf("level = %v, want not Trusted", result.ConformanceLevel)
+	}
+
+	const manifest = "catalog.entries[%d].trustManifest"
+
+	tests := []struct {
+		name string
+		path string
+		want string
+	}{
+		{
+			"host manifest alg none", "catalog.host.trustManifest.signature",
+			"signature algorithm 'none' must be rejected",
+		},
+		{
+			"catalog signature HMAC", "catalog.signature",
+			"signature algorithm 'HS256' must be rejected",
+		},
+		{
+			"entry manifest HMAC", fmt.Sprintf(manifest, 0) + ".signature",
+			"signature algorithm 'HS256' must be rejected",
+		},
+		{
+			"entry manifest alg none", fmt.Sprintf(manifest, 1) + ".signature",
+			"signature algorithm 'none' must be rejected",
+		},
+		{
+			"subject md5 digest", fmt.Sprintf(manifest, 1) + ".subject.digest",
+			`digest algorithm is weaker than SHA-256: "md5"`,
+		},
+		{
+			"alg none is case-insensitive", fmt.Sprintf(manifest, 2) + ".signature",
+			"signature algorithm 'nOnE' must be rejected",
+		},
+		{
+			"undecodable header is an error, not skipped", fmt.Sprintf(manifest, 3) + ".signature",
+			"declaring an 'alg'",
+		},
+		{
+			"attestation md5 digest", fmt.Sprintf(manifest, 4) + ".attestations[0].digest",
+			`digest algorithm is weaker than SHA-256: "md5"`,
+		},
+		{
+			"provenance sha1 sourceDigest", fmt.Sprintf(manifest, 4) + ".provenance[0].sourceDigest",
+			`digest algorithm is weaker than SHA-256: "sha1"`,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if !hasErrorAt(result, tc.path, tc.want) {
+				t.Errorf("want error at %s containing %q, got: %+v", tc.path, tc.want, result.Errors)
+			}
+		})
+	}
+
+	t.Run("compliant entry is clean", func(t *testing.T) {
+		path := fmt.Sprintf(manifest, 5)
+
+		if hasErrorAt(result, path, "") {
+			t.Errorf("expected no errors under %s, got: %+v", path, result.Errors)
+		}
+	})
+}
+
+func TestValidate_SignatureMessageDoesNotMentionTrustManifest(t *testing.T) {
+	// The check runs on the catalog's own signature too, which is not a trust
+	// manifest.
+	result := validate.Validate(parse(t, fixture.WeakSignatureJSON))
+
+	for _, d := range result.Errors {
+		if d.Path == "catalog.signature" && strings.Contains(d.Message, "trust manifest") {
+			t.Errorf("a catalog signature is not a trust manifest, got: %q", d.Message)
+		}
+	}
+}
+
+func TestValidate_WeakAlgorithmOrDigestIsNotTrusted(t *testing.T) {
+	const (
+		noneSignature = "eyJhbGciOiJub25lIn0..c2ln"
+		hmacSignature = "eyJhbGciOiJIUzI1NiJ9..c2ln"
+		md5Digest     = "md5:0123456789abcdef0123456789abcdef"
+		sha1Digest    = "sha1:0123456789abcdef0123456789abcdef01234567"
+	)
+
+	tests := []struct {
+		name   string
+		mutate func(c *catalog.AICatalog)
+	}{
+		{"alg none on an entry manifest", func(c *catalog.AICatalog) {
+			c.Entries[0].TrustManifest.Signature = noneSignature
+		}},
+		{"HMAC on the catalog signature", func(c *catalog.AICatalog) {
+			c.Signature = hmacSignature
+		}},
+		{"md5 subject digest", func(c *catalog.AICatalog) {
+			c.Entries[0].TrustManifest.Subject.Digest = md5Digest
+		}},
+		{"md5 attestation digest", func(c *catalog.AICatalog) {
+			c.Entries[0].TrustManifest.Attestations[0].Digest = md5Digest
+		}},
+		{"sha1 provenance sourceDigest", func(c *catalog.AICatalog) {
+			c.Entries[0].TrustManifest.Provenance[0].SourceDigest = sha1Digest
+		}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			c := parse(t, fixture.TrustCleanJSON)
+
+			if got := validate.Validate(c); !got.IsValid || got.ConformanceLevel != validate.Trusted {
+				t.Fatalf("baseline must be a valid Trusted catalog, got valid=%v level=%v errors=%+v",
+					got.IsValid, got.ConformanceLevel, got.Errors)
+			}
+
+			tc.mutate(c)
+
+			result := validate.Validate(c)
+
+			if result.IsValid {
+				t.Error("expected invalid catalog, got IsValid=true")
+			}
+
+			if result.ConformanceLevel == validate.Trusted {
+				t.Errorf("level = %v, want not Trusted", result.ConformanceLevel)
+			}
+		})
 	}
 }
 

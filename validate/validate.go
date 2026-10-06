@@ -19,6 +19,8 @@ import (
 	"time"
 
 	"github.com/Agent-Card/ai-catalog-go/catalog"
+	"github.com/Agent-Card/ai-catalog-go/internal/jws"
+	"github.com/Agent-Card/ai-catalog-go/trust"
 )
 
 // ConformanceLevel is the AI Catalog conformance level a document satisfies.
@@ -162,6 +164,7 @@ func collectTrustManifests(c *catalog.AICatalog) []*catalog.TrustManifest {
 func (v *validator) validateCatalog(c *catalog.AICatalog, path string, depth int) {
 	v.validateSpecVersion(c.SpecVersion, path+".specVersion")
 	v.validateHost(c.Host, path+".host")
+	v.validateSignatureAlgorithm(c.Signature, path+".signature")
 	v.validateExtensionKeys(c.Extensions, path+".extensions")
 	v.validateEntryUniqueness(c.Entries, path)
 
@@ -320,8 +323,10 @@ func (v *validator) validateTrustManifest(manifest *catalog.TrustManifest, path 
 	}
 
 	v.validateSignedManifestMembers(manifest, path)
+	v.validateSignatureAlgorithm(manifest.Signature, path+".signature")
 	v.validateManifestTimestamps(manifest, path)
 	v.validateSubject(manifest.Subject, path+".subject")
+	v.validateEvidenceDigests(manifest, path)
 }
 
 // isSubstantive reports whether a manifest carries verifiable trust evidence.
@@ -392,6 +397,49 @@ func (v *validator) validateSubject(subject *catalog.Subject, path string) {
 
 	if subject.Digest == "" {
 		v.addError(path+".digest", "subject.digest is required and must not be empty")
+
+		return
+	}
+
+	v.validateDigest(subject.Digest, path+".digest")
+}
+
+// validateEvidenceDigests checks the optional digests a manifest carries on its
+// attestations and provenance links. Absent digests are fine; present ones
+// follow the same rules as the subject digest.
+func (v *validator) validateEvidenceDigests(manifest *catalog.TrustManifest, path string) {
+	for i := range manifest.Attestations {
+		if digest := manifest.Attestations[i].Digest; digest != "" {
+			v.validateDigest(digest, fmt.Sprintf("%s.attestations[%d].digest", path, i))
+		}
+	}
+
+	for i := range manifest.Provenance {
+		if digest := manifest.Provenance[i].SourceDigest; digest != "" {
+			v.validateDigest(digest, fmt.Sprintf("%s.provenance[%d].sourceDigest", path, i))
+		}
+	}
+}
+
+// validateDigest rejects a digest that is malformed or uses an algorithm weaker
+// than SHA-256.
+func (v *validator) validateDigest(value, path string) {
+	if _, err := trust.ParseDigest(value); err != nil {
+		v.addError(path, err.Error())
+	}
+}
+
+// validateSignatureAlgorithm applies the shared JWS algorithm policy to a
+// catalog or trust manifest signature. "none" and the HMAC family cannot
+// establish third-party trust, so they are errors, and any error keeps the
+// document from being classified Trusted.
+func (v *validator) validateSignatureAlgorithm(signature, path string) {
+	if signature == "" {
+		return
+	}
+
+	if result := jws.Check(signature); result.Problem != jws.OK {
+		v.addError(path, result.Message)
 	}
 }
 
