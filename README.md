@@ -114,24 +114,26 @@ import "github.com/Agent-Card/ai-catalog-go/validate"
 result := validate.Validate(doc)
 if !result.IsValid {
 	for _, d := range result.Errors {
-		log.Printf("%s: %s", d.Path, d.Message)
+		log.Printf("%s %s: %s", d.Code, d.Path, d.Message)
 	}
 }
 log.Printf("conformance level: %s", result.ConformanceLevel) // minimal | discoverable | trusted
 
 // Validate whatever a Source is backed by:
 result, err := validate.Source(ctx, src)
+
+// Fix the clock used for expiry, or the nesting limit (default 4):
+result = validate.Validate(doc, validate.WithClock(clock), validate.WithMaxNestingDepth(2))
 ```
 
-### Analyze trust metadata
+Diagnostics carry a stable `Code`; match on it rather than on the message.
+
+`Trusted` is structural: every root entry's trust manifest is signed, bound to its entry by `subject`, unexpired, and meets the spec's `did:web` Publisher Profile (a `urn:air` identifier, identity exactly `did:web:{publisher}`, an ES256 signature whose `kid` is the identity plus a fragment, and no `jku`, `jwk`, `x5u` or `x5c`). Profile violations are warnings that keep the catalog at `Discoverable`. Signatures are not verified and DID documents are not resolved.
+
+### Trust metadata
 
 ```go
 import "github.com/Agent-Card/ai-catalog-go/trust"
-
-report := trust.AnalyzeCatalog(doc)
-for _, f := range report.Findings {
-	log.Printf("[%s] %s: %s", f.Severity, f.Path, f.Message)
-}
 
 // Verify an attestation digest against its bytes:
 ok, err := trust.VerifyDigest("sha256:9f86d0...", data)

@@ -34,8 +34,6 @@ type CatalogEntry struct {
 
 	Publisher *Publisher `json:"publisher,omitempty"`
 
-	// TrustManifest.Identity must align with Identifier's publisher domain when
-	// present.
 	TrustManifest *TrustManifest `json:"trustManifest,omitempty"`
 
 	// UpdatedAt is an RFC 3339 timestamp of the last modification.

@@ -35,20 +35,7 @@ var NestedDeepJSON []byte
 //go:embed unsigned_trust.json
 var UnsignedTrustJSON []byte
 
-// TrustFindingsJSON triggers every trust analysis finding.
-//
-//go:embed trust_findings.json
-var TrustFindingsJSON []byte
-
-//go:embed trust_nonuri.json
-var TrustNonURIJSON []byte
-
-// UnboundIdentityJSON has an entry identity carrying no trust domain to bind.
-//
-//go:embed unbound_identity.json
-var UnboundIdentityJSON []byte
-
-// TrustCleanJSON is trusted and yields no findings; its manifest carries
+// TrustCleanJSON is Trusted and yields no diagnostics; its manifest carries
 // unsorted extensions for the canonicalization test.
 //
 //go:embed trust_clean.json
@@ -56,3 +43,8 @@ var TrustCleanJSON []byte
 
 //go:embed weak_signature.json
 var WeakSignatureJSON []byte
+
+// ProfileJSON has one entry per did:web Publisher Profile and signature case.
+//
+//go:embed profile.json
+var ProfileJSON []byte
