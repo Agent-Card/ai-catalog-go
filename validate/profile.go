@@ -48,7 +48,7 @@ func (v *validator) checkNamespace(entry *catalog.CatalogEntry, path string) {
 	publisher, ok := identity.Publisher(entry.Identifier)
 	if !ok || !identity.ValidPublisher(publisher) {
 		v.addWarning(CodeProfileIdentifier, path, fmt.Sprintf(
-			"entry identifier %q must be a urn:air identifier whose publisher is a lowercase DNS name",
+			"entry identifier %q must start with the lowercase prefix \"urn:air:\" followed by a lowercase DNS publisher",
 			entry.Identifier))
 	} else if want := identity.DID(publisher); manifest.Identity != want {
 		v.addWarning(CodeProfileIdentity, path+".identity", fmt.Sprintf(

@@ -256,6 +256,42 @@
         "expiresAt": "2126-03-15T10:00:00Z",
         "signature": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDp3ZWI6YWNtZS5jb20ja2V5LTEifQ.cGF5bG9hZA.c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
       }
+    },
+    {
+      "identifier": "URN:AIR:acme.com:agent:uppercase-prefix",
+      "displayName": "uppercase-prefix",
+      "type": "application/json",
+      "url": "https://example.com/ok.json",
+      "trustManifest": {
+        "identity": "did:web:acme.com",
+        "subject": {
+          "identifier": "URN:AIR:acme.com:agent:uppercase-prefix",
+          "type": "application/json",
+          "digest": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+          "url": "https://example.com/ok.json"
+        },
+        "issuedAt": "2026-03-15T10:00:00Z",
+        "expiresAt": "2126-03-15T10:00:00Z",
+        "signature": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDp3ZWI6YWNtZS5jb20ja2V5LTEifQ..c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+      }
+    },
+    {
+      "identifier": "urn:air:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.com:agent:long-label",
+      "displayName": "long-label",
+      "type": "application/json",
+      "url": "https://example.com/ok.json",
+      "trustManifest": {
+        "identity": "did:web:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.com",
+        "subject": {
+          "identifier": "urn:air:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.com:agent:long-label",
+          "type": "application/json",
+          "digest": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+          "url": "https://example.com/ok.json"
+        },
+        "issuedAt": "2026-03-15T10:00:00Z",
+        "expiresAt": "2126-03-15T10:00:00Z",
+        "signature": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImRpZDp3ZWI6YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYS5jb20ja2V5LTEifQ..c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
+      }
     }
   ]
 }

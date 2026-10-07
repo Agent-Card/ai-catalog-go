@@ -33,11 +33,24 @@ func Publisher(identifier string) (string, bool) {
 	return publisher, publisher != ""
 }
 
+// DNS length limits: 253 characters per name, 63 per label.
+const (
+	maxNameLen  = 253
+	maxLabelLen = 63
+)
+
 // ValidPublisher reports whether publisher can be the domain of a root did:web
-// DID: lowercase ASCII, with no port, IP address or trailing root dot.
+// DID: lowercase ASCII within the DNS length limits, with no port, IP address
+// or trailing root dot.
 func ValidPublisher(publisher string) bool {
-	if !domain.MatchString(publisher) {
+	if len(publisher) > maxNameLen || !domain.MatchString(publisher) {
 		return false
+	}
+
+	for label := range strings.SplitSeq(publisher, ".") {
+		if len(label) > maxLabelLen {
+			return false
+		}
 	}
 
 	_, err := netip.ParseAddr(publisher)

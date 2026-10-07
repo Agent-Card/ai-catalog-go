@@ -438,6 +438,8 @@ func TestValidate_DidWebProfile(t *testing.T) {
 		{validate.CodeProfileKeyID, fmt.Sprintf(entry, 8) + ".signature"},
 		{validate.CodeProfileHeader, fmt.Sprintf(entry, 9) + ".signature"},
 		{validate.CodeProfileIdentifier, fmt.Sprintf(entry, 10)},
+		{validate.CodeProfileIdentifier, fmt.Sprintf(entry, 14)},
+		{validate.CodeProfileIdentifier, fmt.Sprintf(entry, 15)},
 	}
 
 	wantErrors := []diagnostic{

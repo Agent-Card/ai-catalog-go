@@ -5,6 +5,7 @@
 package identity_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/Agent-Card/ai-catalog-go/internal/identity"
@@ -35,17 +36,21 @@ func TestPublisher(t *testing.T) {
 
 func TestValidPublisher(t *testing.T) {
 	tests := map[string]bool{
-		acme:                true,
-		"xn--bcher-kva.com": true,
-		"localhost":         true,
-		"Acme.com":          false,
-		"acme.com:8443":     false,
-		"acme.com.":         false,
-		"192.168.0.1":       false,
-		"[::1]":             false,
-		"bücher.com":        false,
-		"-acme.com":         false,
-		"":                  false,
+		acme:                             true,
+		"xn--bcher-kva.com":              true,
+		"localhost":                      true,
+		"Acme.com":                       false,
+		"acme.com:8443":                  false,
+		"acme.com.":                      false,
+		"192.168.0.1":                    false,
+		"[::1]":                          false,
+		"bücher.com":                     false,
+		"-acme.com":                      false,
+		strings.Repeat("a", 63) + ".com": true,
+		strings.Repeat("a", 64) + ".com": false,
+		strings.Repeat("a.", 126) + "a":  true,
+		strings.Repeat("a.", 127) + "a":  false,
+		"":                               false,
 	}
 
 	for publisher, want := range tests {
