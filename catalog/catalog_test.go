@@ -143,10 +143,10 @@ func TestRoundTrip_PreservesExtensionsSignatureAndSubject(t *testing.T) {
 	const doc = `{"specVersion":"1.0","signature":"eyJhbGciOiJFUzI1NiJ9..c2ln",` +
 		`"extensions":{"com.example.flag":true},` +
 		`"entries":[{"identifier":"urn:example:a","type":"application/json",` +
-		`"url":"https://example.com/a.json",` +
+		`"url":"https://example.com/a.json","version":"1.0.0",` +
 		`"extensions":{"com.example.score":0.5},` +
 		`"trustManifest":{"identity":"urn:example:a",` +
-		`"subject":{"type":"application/json","digest":"sha256:abc",` +
+		`"subject":{"identifier":"urn:example:a","version":"1.0.0","type":"application/json","digest":"sha256:abc",` +
 		`"url":"https://example.com/a.json"},` +
 		`"issuedAt":"2026-03-15T10:00:00Z","expiresAt":"2126-03-15T10:00:00Z",` +
 		`"extensions":{"com.example.note":"x"}}}]}`
@@ -189,7 +189,7 @@ func TestRoundTrip_PreservesExtensionsSignatureAndSubject(t *testing.T) {
 
 	for _, want := range []string{
 		`"extensions":{"com.example.flag":true}`,
-		`"subject":{"type":"application/json","digest":"sha256:abc"`,
+		`"subject":{"identifier":"urn:example:a","version":"1.0.0","type":"application/json","digest":"sha256:abc"`,
 		`"issuedAt":"2026-03-15T10:00:00Z"`,
 	} {
 		if !strings.Contains(string(data), want) {

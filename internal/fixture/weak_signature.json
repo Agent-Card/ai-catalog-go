@@ -2,16 +2,7 @@
   "specVersion": "1.0",
   "host": {
     "displayName": "Example Host",
-    "identifier": "did:web:example.com",
-    "trustManifest": {
-      "identity": "did:web:example.com",
-      "subject": {
-        "type": "application/ai-catalog+json",
-        "digest": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
-      },
-      "issuedAt": "2026-03-15T10:00:00Z",
-      "signature": "eyJhbGciOiJub25lIn0..c2lnbmF0dXJlLXBsYWNlaG9sZGVy"
-    }
+    "identifier": "did:web:example.com"
   },
   "signature": "eyJhbGciOiJIUzI1NiJ9..c2lnbmF0dXJlLXBsYWNlaG9sZGVy",
   "entries": [
@@ -23,6 +14,7 @@
       "trustManifest": {
         "identity": "urn:example:hmac",
         "subject": {
+          "identifier": "urn:example:hmac",
           "type": "application/json",
           "digest": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
           "url": "https://example.com/hmac.json"
@@ -55,6 +47,7 @@
       "trustManifest": {
         "identity": "urn:example:mixed-case-none",
         "subject": {
+          "identifier": "urn:example:mixed-case-none",
           "type": "application/json",
           "digest": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
           "url": "https://example.com/mixed-case-none.json"
@@ -71,6 +64,7 @@
       "trustManifest": {
         "identity": "urn:example:garbled",
         "subject": {
+          "identifier": "urn:example:garbled",
           "type": "application/json",
           "digest": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
           "url": "https://example.com/garbled.json"
@@ -87,6 +81,7 @@
       "trustManifest": {
         "identity": "urn:example:weak-evidence",
         "subject": {
+          "identifier": "urn:example:weak-evidence",
           "type": "application/json",
           "digest": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
           "url": "https://example.com/weak-evidence.json"
@@ -117,6 +112,7 @@
       "trustManifest": {
         "identity": "urn:example:compliant",
         "subject": {
+          "identifier": "urn:example:compliant",
           "type": "application/json",
           "digest": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
           "url": "https://example.com/compliant.json"

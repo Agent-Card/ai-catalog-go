@@ -22,8 +22,6 @@ type HostInfo struct {
 
 	// LogoURL may be a data URI (RFC 2397).
 	LogoURL string `json:"logoUrl,omitempty"`
-
-	TrustManifest *TrustManifest `json:"trustManifest,omitempty"`
 }
 
 // Publisher is the canonical identity of the entity responsible for an artifact.
@@ -40,8 +38,9 @@ type Publisher struct {
 // TrustManifest provides verifiable identity, attestation, and provenance
 // metadata for an artifact, sitting alongside it as a peer element.
 type TrustManifest struct {
-	// Identity is the subject identifier; within a CatalogEntry its trust
-	// domain must align with the entry Identifier's publisher domain.
+	// Identity is the URI of the issuer the claims are attributed to. Under
+	// the did:web Publisher Profile it is "did:web:" plus the publisher of the
+	// entry's urn:air identifier.
 	Identity string `json:"identity"`
 
 	IdentityType string           `json:"identityType,omitempty"`
@@ -115,6 +114,14 @@ func (m *TrustManifest) Raw() []byte {
 // Subject binds a TrustManifest to the artifact it describes, so a signature
 // cannot be replayed onto different content.
 type Subject struct {
+	// Identifier is the logical identifier of the bound artifact; within a
+	// CatalogEntry it must equal the entry's Identifier.
+	Identifier string `json:"identifier"`
+
+	// Version is the bound release. Within a CatalogEntry it must be absent
+	// when the entry has no Version, and equal to it otherwise.
+	Version string `json:"version,omitempty"`
+
 	// Type is the media type of the bound artifact; within a CatalogEntry it
 	// must equal the entry's Type.
 	Type string `json:"type"`

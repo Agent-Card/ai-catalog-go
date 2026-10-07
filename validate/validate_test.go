@@ -8,8 +8,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Card/ai-catalog-go/catalog"
 	"github.com/Agent-Card/ai-catalog-go/internal/fixture"
@@ -163,41 +165,6 @@ func TestValidate_RejectsMixedVersioning(t *testing.T) {
 	}
 }
 
-func TestValidate_RejectsMisalignedTrustIdentityDomain(t *testing.T) {
-	// The invalid fixture pairs publisher domain acme.com with identity domain
-	// evil.example.
-	result := validate.Validate(parse(t, fixture.InvalidJSON))
-
-	if result.IsValid || !hasError(result, "does not align with the entry identifier publisher domain") {
-		t.Errorf("expected trust identity domain-alignment error, got: %+v", result.Errors)
-	}
-}
-
-func TestValidate_RejectsTrustIdentityWithoutTrustDomain(t *testing.T) {
-	result := validate.Validate(parse(t, fixture.UnboundIdentityJSON))
-
-	want := `trustManifest.identity "urn:acme:agent:finance" has no trust domain to align ` +
-		`with the entry identifier publisher domain "acme.com"`
-
-	if result.IsValid || !hasError(result, want) {
-		t.Errorf("expected unbound trust identity error, got: %+v", result.Errors)
-	}
-}
-
-func TestValidate_AcceptsAlignedNonEqualTrustIdentity(t *testing.T) {
-	// The comprehensive fixture binds urn:air:acme.com:... to did:web:acme.com:
-	// aligned by domain, not equal to the identifier.
-	result := validate.Validate(parse(t, fixture.CatalogJSON))
-
-	if !result.IsValid {
-		t.Fatalf("expected valid aligned binding, errors: %+v", result.Errors)
-	}
-
-	if result.ConformanceLevel != validate.Trusted {
-		t.Errorf("level = %v, want Trusted", result.ConformanceLevel)
-	}
-}
-
 func TestValidate_RejectsMissingRequiredFields(t *testing.T) {
 	result := validate.Validate(parse(t, fixture.InvalidJSON))
 
@@ -278,10 +245,6 @@ func TestValidate_RejectsWeakSignaturesAndDigests(t *testing.T) {
 		path string
 		want string
 	}{
-		{
-			"host manifest alg none", "catalog.host.trustManifest.signature",
-			"signature algorithm 'none' must be rejected",
-		},
 		{
 			"catalog signature HMAC", "catalog.signature",
 			"signature algorithm 'HS256' must be rejected",
@@ -417,6 +380,8 @@ func TestValidate_RejectsSubjectContradictingItsEntry(t *testing.T) {
 	result := validate.Validate(parse(t, fixture.InvalidJSON))
 
 	wants := []string{
+		`subject.identifier "urn:other" must equal the entry identifier "urn:mismatched-subject"`,
+		`subject.version "9.9.9" must equal the entry version ""`,
 		`subject.type "application/gguf" must equal the entry type "application/json"`,
 		`subject.url "https://example.com/other.json" must equal the entry url`,
 	}
@@ -438,6 +403,130 @@ func TestValidate_ManifestTimestamps(t *testing.T) {
 	// An expired manifest is a SHOULD-level rejection, so it warns.
 	if !hasWarning(result, "SHOULD be rejected") {
 		t.Errorf("expected expiry warning, got: %+v", result.Warnings)
+	}
+}
+
+// diagnostic is a code and path, compared as a set.
+type diagnostic struct {
+	Code validate.Code
+	Path string
+}
+
+func codes(diagnostics []validate.Diagnostic) []diagnostic {
+	got := make([]diagnostic, 0, len(diagnostics))
+
+	for _, d := range diagnostics {
+		got = append(got, diagnostic{d.Code, d.Path})
+	}
+
+	return got
+}
+
+func TestValidate_DidWebProfile(t *testing.T) {
+	const entry = "catalog.entries[%d].trustManifest"
+
+	result := validate.Validate(parse(t, fixture.ProfileJSON))
+
+	wantWarnings := []diagnostic{
+		{validate.CodeProfileIdentifier, fmt.Sprintf(entry, 1)},
+		{validate.CodeProfileIdentity, fmt.Sprintf(entry, 2) + ".identity"},
+		{validate.CodeProfileIdentity, fmt.Sprintf(entry, 3) + ".identity"},
+		{validate.CodeProfileType, fmt.Sprintf(entry, 4) + ".identityType"},
+		{validate.CodeProfileAlgorithm, fmt.Sprintf(entry, 5) + ".signature"},
+		{validate.CodeProfileKeyID, fmt.Sprintf(entry, 6) + ".signature"},
+		{validate.CodeProfileKeyID, fmt.Sprintf(entry, 7) + ".signature"},
+		{validate.CodeProfileKeyID, fmt.Sprintf(entry, 8) + ".signature"},
+		{validate.CodeProfileHeader, fmt.Sprintf(entry, 9) + ".signature"},
+		{validate.CodeProfileIdentifier, fmt.Sprintf(entry, 10)},
+	}
+
+	wantErrors := []diagnostic{
+		{validate.CodeSignatureB64, fmt.Sprintf(entry, 11) + ".signature"},
+		{validate.CodeSignatureMalformed, fmt.Sprintf(entry, 12) + ".signature"},
+		{validate.CodeSignatureForm, fmt.Sprintf(entry, 13) + ".signature"},
+	}
+
+	if got := codes(result.Warnings); !sameSet(got, wantWarnings) {
+		t.Errorf("warnings = %v, want %v", got, wantWarnings)
+	}
+
+	if got := codes(result.Errors); !sameSet(got, wantErrors) {
+		t.Errorf("errors = %v, want %v", got, wantErrors)
+	}
+
+	if result.ConformanceLevel == validate.Trusted {
+		t.Error("a catalog with profile violations must not be Trusted")
+	}
+}
+
+func sameSet(got, want []diagnostic) bool {
+	if len(got) != len(want) {
+		return false
+	}
+
+	for _, d := range want {
+		if !slices.Contains(got, d) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func TestValidate_ProfileViolationHoldsBackTrusted(t *testing.T) {
+	c := parse(t, fixture.TrustCleanJSON)
+	c.Entries[0].TrustManifest.Identity = "did:web:other.example"
+
+	result := validate.Validate(c)
+
+	if !result.IsValid {
+		t.Fatalf("a profile violation is a warning, got errors: %+v", result.Errors)
+	}
+
+	if result.ConformanceLevel != validate.Discoverable {
+		t.Errorf("level = %v, want Discoverable", result.ConformanceLevel)
+	}
+}
+
+func TestValidate_ExpiryFollowsClock(t *testing.T) {
+	c := parse(t, fixture.TrustCleanJSON)
+	c.Entries[0].TrustManifest.ExpiresAt = "2026-06-01T00:00:00Z"
+
+	at := func(value string) validate.Option {
+		now, err := time.Parse(time.RFC3339, value)
+		if err != nil {
+			t.Fatalf("parse clock: %v", err)
+		}
+
+		return validate.WithClock(func() time.Time { return now })
+	}
+
+	before := validate.Validate(c, at("2026-05-31T00:00:00Z"))
+	if before.ConformanceLevel != validate.Trusted || len(before.Warnings) != 0 {
+		t.Errorf("before expiry: level=%v warnings=%+v", before.ConformanceLevel, before.Warnings)
+	}
+
+	after := validate.Validate(c, at("2026-06-02T00:00:00Z"))
+
+	if !after.IsValid || after.ConformanceLevel != validate.Discoverable {
+		t.Errorf("after expiry: valid=%v level=%v", after.IsValid, after.ConformanceLevel)
+	}
+
+	want := []diagnostic{{validate.CodeManifestExpired, "catalog.entries[0].trustManifest.expiresAt"}}
+	if got := codes(after.Warnings); !sameSet(got, want) {
+		t.Errorf("warnings = %v, want %v", got, want)
+	}
+}
+
+func TestValidate_WithMaxNestingDepth(t *testing.T) {
+	c := parse(t, fixture.NestedMaxJSON)
+
+	if result := validate.Validate(c, validate.WithMaxNestingDepth(1)); result.IsValid {
+		t.Error("expected a depth error with a limit of 1")
+	}
+
+	if result := validate.Validate(c, validate.WithMaxNestingDepth(10)); !result.IsValid {
+		t.Errorf("expected nesting within a limit of 10 to be valid, got: %+v", result.Errors)
 	}
 }
 
