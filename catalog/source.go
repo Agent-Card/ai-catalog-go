@@ -6,33 +6,20 @@ package catalog
 
 import "context"
 
-// Source is a source-agnostic loader for an AI Catalog. The provider package
-// ships built-in implementations (JSON, Web); consumers with their own backend
-// can satisfy it directly. Query the loaded document with the methods on
-// *AICatalog (GetByID, Search, ...).
+// Source loads an AI Catalog. Package provider has built-in implementations;
+// any backend can implement it.
 type Source interface {
-	// Load returns the whole AI Catalog document in memory. The context
-	// governs any I/O and cancellation.
-	//
-	// Each call returns a fresh document that the caller owns and may read or
-	// mutate freely without affecting the Source or other callers. The
-	// built-in providers re-parse on every call; implementations backed by a
-	// shared, cached value SHOULD return an independent copy.
+	// Load returns the catalog. Each call returns a document the caller owns,
+	// so implementations that cache must return a copy.
 	Load(ctx context.Context) (*AICatalog, error)
 }
 
-// RawSource is an optional capability for a Source that can also return the
-// document exactly as it was served. Signature verification requires those
-// bytes, because re-serializing a parsed *AICatalog drops any member this SDK
-// does not model. Callers detect the capability with a type assertion:
-//
-//	if raw, ok := source.(catalog.RawSource); ok {
-//		data, err := raw.Raw(ctx)
-//	}
+// RawSource is a Source that can return the document exactly as served.
+// Signature verification needs those bytes, since re-serializing a parsed
+// catalog drops members the SDK does not model.
 type RawSource interface {
 	Source
 
-	// Raw returns the document's original bytes. Each call returns a slice the
-	// caller owns and may modify freely.
+	// Raw returns a copy of the original bytes.
 	Raw(ctx context.Context) ([]byte, error)
 }

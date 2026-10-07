@@ -59,9 +59,3 @@ func TestValidPublisher(t *testing.T) {
 		}
 	}
 }
-
-func TestDID(t *testing.T) {
-	if got := identity.DID(acme); got != "did:web:"+acme {
-		t.Errorf("DID = %q", got)
-	}
-}

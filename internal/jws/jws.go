@@ -2,8 +2,7 @@
 // Copyright AGNTCY Contributors (https://github.com/agntcy)
 // SPDX-License-Identifier: Apache-2.0
 
-// Package jws holds the signature policy shared by the trust and validate
-// packages, so both report the same verdict for the same signature.
+// Package jws holds the signature algorithm policy.
 package jws
 
 import (
@@ -161,9 +160,9 @@ func Detached(signature string) bool {
 	return len(parts) == compactParts && parts[0] != "" && parts[1] == "" && parts[2] != ""
 }
 
-// Check inspects the "alg" in the protected header of a JWS compact
-// serialization. "none" carries no proof and the HMAC family only proves
-// possession of a shared secret, so neither can establish third-party trust.
+// Check inspects the "alg" in the protected header of a compact JWS. "none"
+// proves nothing and HMAC only proves a shared secret, so neither can establish
+// third-party trust.
 func Check(signature string) Result {
 	header, err := Parse(signature)
 	if err != nil {

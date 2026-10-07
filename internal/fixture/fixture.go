@@ -2,49 +2,25 @@
 // Copyright AGNTCY Contributors (https://github.com/agntcy)
 // SPDX-License-Identifier: Apache-2.0
 
-// Package fixture holds the AI Catalog documents shared across the SDK's tests.
+// Package fixture holds the documents shared across the SDK's tests.
 package fixture
 
-import _ "embed"
+import (
+	"embed"
+	"testing"
+)
 
-// CatalogJSON is the comprehensive fixture: Trusted conformance, mixed entry
-// types, multiple versions of one identifier, and a nested catalog.
-//
-//go:embed catalog.json
-var CatalogJSON []byte
+//go:embed data
+var files embed.FS
 
-//go:embed minimal.json
-var MinimalJSON []byte
+// Read returns the fixture at name, relative to the data directory.
+func Read(tb testing.TB, name string) []byte {
+	tb.Helper()
 
-//go:embed discoverable.json
-var DiscoverableJSON []byte
+	data, err := files.ReadFile("data/" + name)
+	if err != nil {
+		tb.Fatalf("read fixture %s: %v", name, err)
+	}
 
-// InvalidJSON packs one instance of every validation violation the SDK reports.
-//
-//go:embed invalid.json
-var InvalidJSON []byte
-
-// NestedMaxJSON nests exactly to the depth limit; NestedDeepJSON one beyond it.
-//
-//go:embed nested_max.json
-var NestedMaxJSON []byte
-
-//go:embed nested_deep.json
-var NestedDeepJSON []byte
-
-//go:embed unsigned_trust.json
-var UnsignedTrustJSON []byte
-
-// TrustCleanJSON is Trusted and yields no diagnostics; its manifest carries
-// unsorted extensions for the canonicalization test.
-//
-//go:embed trust_clean.json
-var TrustCleanJSON []byte
-
-//go:embed weak_signature.json
-var WeakSignatureJSON []byte
-
-// ProfileJSON has one entry per did:web Publisher Profile and signature case.
-//
-//go:embed profile.json
-var ProfileJSON []byte
+	return data
+}
