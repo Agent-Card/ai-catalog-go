@@ -4,8 +4,7 @@
 
 package catalog
 
-// Known catalog-entry media types from the AI Catalog specification
-// (https://ai-catalog.io/spec/#catalog-entry).
+// Entry media types recommended by the specification.
 const (
 	MediaTypeCatalog             = "application/ai-catalog+json"
 	MediaTypeAgentCard           = "application/agent-card+json"

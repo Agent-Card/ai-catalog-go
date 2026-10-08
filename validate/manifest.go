@@ -48,8 +48,7 @@ func (v *validator) validateTrustManifest(manifest *catalog.TrustManifest, path 
 	v.validateExtensionKeys(manifest.Extensions, path+".extensions")
 	v.validateIdentity(manifest.Identity, path+".identity")
 
-	// An empty manifest advertises trust metadata that is not there; the spec
-	// requires omitting it instead.
+	// An empty manifest must be omitted.
 	if !isSubstantive(manifest) {
 		v.addError(CodeManifestEmpty, path, "trustManifest must carry at least one substantive member "+
 			"(a signature with its subject and issuedAt, a non-empty attestations or "+
@@ -84,8 +83,7 @@ func isSubstantive(manifest *catalog.TrustManifest) bool {
 		manifest.TrustSchema != nil
 }
 
-// validateSignedMembers enforces the members a signature must commit to;
-// without them it covers no artifact and can be replayed onto other content.
+// validateSignedMembers requires the members a signature must cover, so it cannot be replayed.
 func (v *validator) validateSignedMembers(manifest *catalog.TrustManifest, path string) {
 	if manifest.Signature == "" {
 		return
@@ -139,10 +137,8 @@ func (v *validator) validateSubject(subject *catalog.Subject, path string) {
 	v.validateDigest(subject.Digest, path+".digest")
 }
 
-// validateSubjectBinding enforces that a subject restates the identifier,
-// version, type and url of the entry. That duplication pulls those values into
-// the signed payload; a mismatch means the entry describes a different artifact
-// than the one that was signed.
+// validateSubjectBinding requires the subject to restate the entry's
+// identifier, version, type and url, which brings them into the signed payload.
 func (v *validator) validateSubjectBinding(entry *catalog.CatalogEntry, path string) {
 	subject := entry.TrustManifest.Subject
 	if subject == nil {
@@ -231,9 +227,8 @@ func (v *validator) validateDigest(value, path string) {
 	}
 }
 
-// validateSignature applies the signature rules shared by the catalog and trust
-// manifest signatures. "none" and the HMAC family cannot establish third-party
-// trust, so they are errors, and any error keeps the document from Trusted.
+// validateSignature applies the rules shared by catalog and trust manifest
+// signatures. "none" and the HMAC family cannot establish third-party trust.
 func (v *validator) validateSignature(signature, path string) {
 	if signature == "" {
 		return

@@ -15,32 +15,30 @@ import (
 type HostInfo struct {
 	DisplayName string `json:"displayName"`
 
-	// Identifier is a verifiable host identifier (e.g. a DID or domain name).
+	// Identifier is a verifiable host identifier, such as a DID or domain.
 	Identifier string `json:"identifier,omitempty"`
 
 	DocumentationURL string `json:"documentationUrl,omitempty"`
 
-	// LogoURL may be a data URI (RFC 2397).
+	// LogoURL may be a data URI.
 	LogoURL string `json:"logoUrl,omitempty"`
 }
 
-// Publisher is the canonical identity of the entity responsible for an artifact.
+// Publisher identifies the entity responsible for an artifact.
 type Publisher struct {
-	// Identifier is a verifiable identifier (e.g. a DID, domain name, or URI).
+	// Identifier is a verifiable identifier, such as a DID, domain or URI.
 	Identifier string `json:"identifier"`
 
 	DisplayName string `json:"displayName"`
 
-	// IdentityType hints at Identifier's scheme (e.g. "did", "dns").
+	// IdentityType hints at the Identifier scheme, such as "did" or "dns".
 	IdentityType string `json:"identityType,omitempty"`
 }
 
-// TrustManifest provides verifiable identity, attestation, and provenance
-// metadata for an artifact, sitting alongside it as a peer element.
+// TrustManifest carries identity, attestation and provenance metadata for an artifact.
 type TrustManifest struct {
-	// Identity is the URI of the issuer the claims are attributed to. Under
-	// the did:web Publisher Profile it is "did:web:" plus the publisher of the
-	// entry's urn:air identifier.
+	// Identity is the URI of the issuer. Under the did:web Publisher Profile it
+	// is "did:web:" plus the publisher of the entry's urn:air identifier.
 	Identity string `json:"identity"`
 
 	IdentityType string           `json:"identityType,omitempty"`
@@ -51,34 +49,28 @@ type TrustManifest struct {
 	PrivacyPolicyURL  string `json:"privacyPolicyUrl,omitempty"`
 	TermsOfServiceURL string `json:"termsOfServiceUrl,omitempty"`
 
-	// Subject binds the manifest to the exact artifact bytes it describes.
-	// Required whenever Signature is present, otherwise the signature could be
-	// replayed onto a different artifact.
+	// Subject binds the manifest to the artifact; required with a Signature.
 	Subject *Subject `json:"subject,omitempty"`
 
-	// IssuedAt is an RFC 3339 timestamp of when the manifest was issued.
-	// Required whenever Signature is present.
+	// IssuedAt is an RFC 3339 timestamp; required with a Signature.
 	IssuedAt string `json:"issuedAt,omitempty"`
 
-	// ExpiresAt is an RFC 3339 timestamp after which the manifest must no
-	// longer be relied upon.
+	// ExpiresAt is an RFC 3339 timestamp after which the manifest is stale.
 	ExpiresAt string `json:"expiresAt,omitempty"`
 
-	// Signature is a detached JWS (RFC 7515) over the manifest, using JCS
-	// (RFC 8785) canonicalization.
+	// Signature is a detached JWS over the JCS-canonicalized manifest.
 	Signature string `json:"signature,omitempty"`
 
-	// Extensions holds custom or vendor-specific members. Keys must be a URL
-	// or a reverse-DNS string to keep vendors from colliding.
+	// Extensions holds vendor-specific members; keys must be a URL or a
+	// reverse-DNS string.
 	Extensions map[string]json.RawMessage `json:"extensions,omitzero"`
 
-	// raw holds the JSON this manifest was decoded from; see Raw.
+	// raw is the JSON the manifest was decoded from; see Raw.
 	raw json.RawMessage
 }
 
-// UnmarshalJSON decodes a manifest and keeps a copy of the bytes it was decoded
-// from, so a signature can be checked against the document as it was published
-// rather than against a re-serialization of this lossy struct.
+// UnmarshalJSON decodes a manifest and keeps its source bytes, so a signature
+// is checked against the document as published, not a lossy re-serialization.
 func (m *TrustManifest) UnmarshalJSON(data []byte) error {
 	// plain has no methods, so decoding into it does not recurse.
 	type plain TrustManifest
@@ -90,7 +82,7 @@ func (m *TrustManifest) UnmarshalJSON(data []byte) error {
 	}
 
 	// Decoding into a manifest that already holds data merges members, so the
-	// bytes alone no longer describe it.
+	// bytes no longer describe it.
 	if fresh && !bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
 		m.raw = bytes.Clone(data)
 	} else {
@@ -100,9 +92,8 @@ func (m *TrustManifest) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// Raw returns a copy of the JSON the manifest was decoded from, or nil if it
-// was built in code. It reflects the manifest as decoded: changing a field
-// afterwards does not change it.
+// Raw returns a copy of the JSON the manifest was decoded from, or nil if it was
+// built in code. Later changes to the fields do not affect it.
 func (m *TrustManifest) Raw() []byte {
 	if m == nil || m.raw == nil {
 		return nil
@@ -111,8 +102,7 @@ func (m *TrustManifest) Raw() []byte {
 	return bytes.Clone(m.raw)
 }
 
-// Subject binds a TrustManifest to the artifact it describes, so a signature
-// cannot be replayed onto different content.
+// Subject binds a TrustManifest to the artifact it describes.
 type Subject struct {
 	// Identifier is the logical identifier of the bound artifact; within a
 	// CatalogEntry it must equal the entry's Identifier.
@@ -126,11 +116,10 @@ type Subject struct {
 	// must equal the entry's Type.
 	Type string `json:"type"`
 
-	// Digest is the artifact digest as "algorithm:hex" (SHA-256 or stronger).
+	// Digest is the artifact digest as "algorithm:hex", SHA-256 or stronger.
 	Digest string `json:"digest"`
 
-	// URL locates the bound artifact; when set within a CatalogEntry it must
-	// equal the entry's URL.
+	// URL locates the artifact; within a CatalogEntry it must equal the entry's URL.
 	URL string `json:"url,omitempty"`
 }
 
@@ -142,16 +131,15 @@ type TrustSchema struct {
 	VerificationMethods []string `json:"verificationMethods,omitzero"`
 }
 
-// Attestation is verifiable proof of a claim about an artifact (compliance
-// certification, publisher identity binding, audit report, SBOM, etc.).
+// Attestation is verifiable proof of a claim about an artifact.
 type Attestation struct {
-	// Type is the attestation type (e.g. "SOC2-Type2", "publisher-identity").
+	// Type is the attestation type, such as "SOC2-Type2".
 	Type string `json:"type"`
 
-	// URI is an HTTPS URL or Data URI locating the attestation document.
+	// URI is an HTTPS URL or data URI.
 	URI string `json:"uri"`
 
-	// Digest is an integrity digest as "algorithm:hex" (SHA-256 or stronger).
+	// Digest is an integrity digest as "algorithm:hex", SHA-256 or stronger.
 	Digest string `json:"digest,omitempty"`
 
 	Size        *uint64 `json:"size,omitempty"`
@@ -160,10 +148,10 @@ type Attestation struct {
 
 // ProvenanceLink records lineage for an artifact.
 type ProvenanceLink struct {
-	// Relation to the source (e.g. "derivedFrom", "publishedFrom").
+	// Relation to the source, such as "derivedFrom".
 	Relation string `json:"relation"`
 
-	// SourceID is the source artifact (e.g. a Git repo URL, OCI ref, dataset).
+	// SourceID identifies the source, such as a Git URL or OCI reference.
 	SourceID string `json:"sourceId"`
 
 	// SourceDigest is an integrity digest as "algorithm:hex".
@@ -171,7 +159,7 @@ type ProvenanceLink struct {
 
 	RegistryURI string `json:"registryUri,omitempty"`
 
-	// StatementURI locates a provenance statement (e.g. in-toto / SLSA).
+	// StatementURI locates a provenance statement.
 	StatementURI string `json:"statementUri,omitempty"`
 
 	SignatureRef string `json:"signatureRef,omitempty"`
