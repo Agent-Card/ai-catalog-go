@@ -5,14 +5,13 @@ SPDX-License-Identifier: Apache-2.0
 
 # Examples
 
-Runnable, self-contained programs that demonstrate patterns which are **not part
-of the AI Catalog specification** and therefore intentionally live outside the
-SDK's supported API. Treat them as reference code to copy and adapt, not as a
-stable interface.
+Runnable programs for patterns that are **not part of the AI Catalog
+specification** and live outside the SDK's supported API. Copy and adapt them;
+they are not a stable interface.
 
 | Example | Description |
 | --- | --- |
-| [`oci/`](./oci) | Pack an AI Catalog document into an OCI image layout on disk. Corresponds to the spec's informative "mapping to OCI" — not a normative part of the format. |
+| [`oci/`](./oci) | Packs an AI Catalog into an OCI image layout on disk, following the spec's informative mapping to OCI. |
 
 Run one with:
 

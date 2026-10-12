@@ -16,28 +16,21 @@ import (
 )
 
 // ErrUncanonicalizableJSON indicates input that cannot be canonicalized, such as
-// a number outside the IEEE 754 double range, a duplicate member name, or
-// trailing content after the top-level value.
+// an out-of-range number, a duplicate member name or trailing content.
 var ErrUncanonicalizableJSON = errors.New("JSON cannot be canonicalized")
 
-// signatureMember is the member excluded from a canonical signing payload: a
-// detached signature cannot cover itself.
+// signatureMember is excluded from the signing payload; a signature cannot cover itself.
 const signatureMember = "signature"
 
-// Canonicalize returns the JCS (RFC 8785) canonical form of a JSON object or
-// array: members sorted by UTF-16 code unit, minimal string escaping, and
-// ECMAScript number formatting.
-//
-// Input that is not I-JSON (RFC 7493) is rejected. Duplicate member names, lone
-// surrogates, and invalid UTF-8 all canonicalize ambiguously, so signing them
-// would let a producer and a verifier commit to different documents.
+// Canonicalize returns the JCS (RFC 8785) form of a JSON object or array. Input
+// that is not I-JSON (RFC 7493) is rejected: duplicate member names, lone
+// surrogates and invalid UTF-8 canonicalize ambiguously.
 func Canonicalize(data []byte) ([]byte, error) {
 	if !utf8.Valid(data) {
 		return nil, fmt.Errorf("%w: input is not valid UTF-8", ErrUncanonicalizableJSON)
 	}
 
-	// The canonicalizer tolerates a few malformed number literals, such as the
-	// leading zero in "01", that RFC 8259 forbids outright.
+	// The canonicalizer accepts some invalid number literals, such as "01".
 	if !json.Valid(data) {
 		return nil, fmt.Errorf("%w: input is not well-formed JSON", ErrUncanonicalizableJSON)
 	}
@@ -50,21 +43,17 @@ func Canonicalize(data []byte) ([]byte, error) {
 	return canonical, nil
 }
 
-// CanonicalizeForSignature returns the JCS (RFC 8785) canonical form of a JSON
-// document with its top-level "signature" member removed, producing the payload
-// that a detached JWS signs and verifies against. Because it works on the
-// original bytes it also covers members this SDK does not model.
+// CanonicalizeForSignature returns the JCS form of a JSON document without its
+// top-level "signature" member, the payload a detached JWS covers. It works on
+// the original bytes, so members the SDK does not model are included.
 func CanonicalizeForSignature(data []byte) ([]byte, error) {
-	// Canonicalize first: it rejects duplicate member names, which the
-	// round-trip below would otherwise collapse into whichever one
-	// encoding/json happens to keep.
+	// Canonicalize first: it rejects duplicate members, which the round-trip below would collapse.
 	canonical, err := Canonicalize(data)
 	if err != nil {
 		return nil, err
 	}
 
-	// Only a top-level object can carry a signature member, and JCS output opens
-	// one with '{'.
+	// Only an object can carry a signature member; JCS output opens one with '{'.
 	if len(canonical) == 0 || canonical[0] != '{' {
 		return canonical, nil
 	}
@@ -88,16 +77,13 @@ func CanonicalizeForSignature(data []byte) ([]byte, error) {
 	return Canonicalize(stripped)
 }
 
-// CanonicalizeTrustManifest returns the canonical signing payload for a trust
-// manifest, with its "signature" member removed.
+// CanonicalizeTrustManifest returns the signing payload for a trust manifest,
+// without its "signature" member.
 //
-// A manifest decoded from JSON is canonicalized from the bytes it was decoded
-// from, so members this SDK does not model, empty arrays and objects, empty
-// strings and nulls are all covered, exactly as the producer signed them. A
-// manifest built in code, or changed after decoding, has no such bytes and is
-// canonicalized from its serialization instead. That form keeps non-nil empty
-// slices and maps as [] and {}, but a nil one is omitted and an empty string is
-// dropped, so a producer signing a built manifest should sign what this returns.
+// A decoded manifest is canonicalized from its original bytes, so everything the
+// producer signed is covered. A manifest built in code or changed after decoding
+// is canonicalized from its serialization, which omits nil slices and maps and
+// empty strings; producers should sign what this returns.
 func CanonicalizeTrustManifest(manifest *catalog.TrustManifest) (string, error) {
 	raw := decodedBytes(manifest)
 
@@ -118,8 +104,7 @@ func CanonicalizeTrustManifest(manifest *catalog.TrustManifest) (string, error) 
 	return string(canonical), nil
 }
 
-// decodedBytes returns the bytes manifest was decoded from, or nil when there
-// are none or when manifest no longer matches them.
+// decodedBytes returns the bytes manifest was decoded from, or nil if absent or stale.
 func decodedBytes(manifest *catalog.TrustManifest) []byte {
 	raw := manifest.Raw()
 	if raw == nil {

@@ -7,18 +7,18 @@ SPDX-License-Identifier: Apache-2.0
 
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/Agent-Card/ai-catalog-go/badge)](https://securityscorecards.dev/viewer/?uri=github.com/Agent-Card/ai-catalog-go)
 
-A Go toolkit for consuming, validating, and analyzing [AI Catalog](https://ai-catalog.io/) documents — the typed, nestable JSON format for making heterogeneous AI artifacts (MCP servers, A2A agents, datasets, model cards, nested catalogs, …) discoverable.
+A Go toolkit for consuming and validating [AI Catalog](https://ai-catalog.io/) documents, the JSON format for making AI artifacts (MCP servers, A2A agents, datasets, model cards, nested catalogs, …) discoverable.
 
-The SDK is a faithful implementation of the [AI Catalog specification](https://ai-catalog.io/spec/).
+It implements the [AI Catalog specification](https://ai-catalog.io/spec/).
 
 ## Scope
 
-The repository follows the AI Catalog spec's own split between **normative** content (defines the format and conformance) and **non-normative** content (informative or convenience code):
+The repository follows the spec's split between normative and non-normative content:
 
-- **Normative** — a faithful implementation of the spec and the stable, supported API: the document/entry types, parsing, and querying (`catalog`); conformance validation (`validate`); and trust-manifest analysis and canonicalization (`trust`). For convenience, `catalog` also adds lookups the spec does not require (e.g. `GetByTag`, `GetByPublisher`, `SearchByRegex`) on the spec-defined types.
-- **Non-normative** — code the spec does not define:
-  - `provider` (and the `catalog.Source` interface) — a supported convenience for loading a catalog from a local file or an HTTP endpoint.
-  - [`examples/`](./examples) — informative, spec-adjacent samples such as packaging a catalog as an OCI artifact (the spec only describes an informative "mapping to OCI"). Reference code to copy and adapt, not part of the supported API.
+- **Normative**: the stable, supported API. Document types, parsing and querying (`catalog`), conformance validation (`validate`), and digest verification and canonicalization (`trust`). `catalog` also has lookups the spec does not define, such as `GetByTag`, `GetByPublisher` and `SearchByRegex`.
+- **Non-normative**:
+  - `provider` and the `catalog.Source` interface load a catalog from a local file or an HTTP endpoint.
+  - [`examples/`](./examples) holds reference code, such as packaging a catalog as an OCI artifact. It is not part of the supported API.
 
 ## Installation
 
@@ -32,7 +32,7 @@ The minimum Go version is declared in [`go.mod`](./go.mod).
 
 ### Load a catalog
 
-The `provider` package returns a `catalog.Source` — a loader for an AI Catalog. Each built-in loads the document as-is (nested catalog entries are left unresolved for the caller to follow as needed).
+The `provider` package returns a `catalog.Source`. Nested catalog entries are not resolved; follow them yourself.
 
 ```go
 import (
@@ -54,13 +54,13 @@ src, err = provider.Web(ctx, "https://acme-corp.com/catalogs/finance.json")
 src, err = provider.Web(ctx, "https://acme-corp.com"+catalog.WellKnownPath)
 ```
 
-`Web` retrieves documents over HTTP; supply a custom client with `provider.WithHTTPClient(myClient)` or an entirely custom transport with `provider.WithFetcher(...)`.
+`Web` fetches over HTTP. Use `provider.WithHTTPClient(myClient)` for a custom client or `provider.WithFetcher(...)` for a custom transport.
 
-If you already hold a parsed `*catalog.AICatalog`, you don't need a `Source` — call its methods directly (see below).
+A parsed `*catalog.AICatalog` needs no `Source`; call its methods directly.
 
 ### Query entries
 
-`Source` has a single method, `Load`, which returns the whole catalog in memory as a `*catalog.AICatalog`. Query it with the document's methods, which cover the entries of that document — follow any nested catalog entry yourself to query its contents:
+`Source.Load` returns the whole catalog as a `*catalog.AICatalog`. Its query methods cover that document's entries only:
 
 ```go
 doc, err := src.Load(ctx)
@@ -74,7 +74,7 @@ hits := doc.Search("weather")
 matched, err := doc.SearchByRegex(`^urn:air:acme-corp\.com:`)
 ```
 
-The same methods are available on any parsed document, so a `Source` is not required:
+The same methods work on any parsed document:
 
 ```go
 doc, _ := catalog.ParseFile("ai-catalog.json")
@@ -87,7 +87,7 @@ byPublisher := doc.GetByPublisher("did:web:acme-corp.com")
 
 ### Multiple versions of an artifact
 
-A catalog may list several entries with the same `identifier` and different `version` values. The SDK selects among them per the spec:
+Entries may share an `identifier` and differ by `version`:
 
 ```go
 all := doc.Versions("urn:air:acme.com:agent:finance")             // every version
@@ -95,11 +95,11 @@ v2, ok := doc.GetByIDAndVersion("urn:air:acme.com:agent:finance", "2.0.0")
 latest, ok := doc.GetLatest("urn:air:acme.com:agent:finance")      // semver, then updatedAt
 ```
 
-`GetLatest` prefers entries whose `version` parses as a Semantic Version (compared with `golang.org/x/mod/semver`, ties broken by the more recent `updatedAt`), falling back to the newest `updatedAt` when no version is parseable.
+`GetLatest` prefers entries with a valid semantic version, compared by semver and then `updatedAt`. Without one it uses the newest `updatedAt`.
 
 ### Resolve a display name
 
-Follows the spec's resolution order for the steps that don't require fetching the artifact: the entry's `displayName`, otherwise the trailing segment of its identifier.
+Returns the entry's `displayName`, or else the last segment of its identifier.
 
 ```go
 name := entry.ResolveDisplayName()
@@ -128,7 +128,7 @@ result = validate.Validate(doc, validate.WithClock(clock), validate.WithMaxNesti
 
 Diagnostics carry a stable `Code`; match on it rather than on the message.
 
-`Trusted` is structural: every root entry's trust manifest is signed, bound to its entry by `subject`, unexpired, and meets the spec's `did:web` Publisher Profile (a `urn:air` identifier, identity exactly `did:web:{publisher}`, an ES256 signature whose `kid` is the identity plus a fragment, and no `jku`, `jwk`, `x5u` or `x5c`). Profile violations are warnings that keep the catalog at `Discoverable`. Signatures are not verified and DID documents are not resolved.
+`Trusted` is structural. Every root entry's trust manifest must be signed, bound to its entry by `subject`, unexpired, and conform to the `did:web` Publisher Profile: a `urn:air` identifier, identity exactly `did:web:{publisher}`, an ES256 signature whose `kid` is the identity plus a fragment, and no `jku`, `jwk`, `x5u` or `x5c`. Profile violations are warnings that keep the catalog at `Discoverable`. Signatures are not verified and DID documents are not resolved.
 
 ### Trust metadata
 
@@ -138,13 +138,13 @@ import "github.com/Agent-Card/ai-catalog-go/trust"
 // Verify an attestation digest against its bytes:
 ok, err := trust.VerifyDigest("sha256:9f86d0...", data)
 
-// Canonicalize a manifest (JCS, RFC 8785) prior to signing/verification:
+// Canonicalize a manifest (JCS, RFC 8785) for signing or verification:
 canonical, err := trust.CanonicalizeTrustManifest(entry.TrustManifest)
 ```
 
-A manifest read from a document is canonicalized from the bytes it was read from, so members the SDK does not model, empty arrays and objects, empty strings and nulls are covered as published. A manifest built in code, or changed after it was read, is canonicalized from its serialization instead; sign the string `CanonicalizeTrustManifest` returns for it. `TrustManifest.Raw()` returns the bytes a manifest was read from.
+A manifest read from a document is canonicalized from its original bytes, so members the SDK does not model are covered as published. A manifest built in code or changed after reading is canonicalized from its serialization; sign what `CanonicalizeTrustManifest` returns for it. `TrustManifest.Raw()` returns the original bytes.
 
-A signature covers the document as published, so verify against the original bytes rather than a re-serialized document — otherwise any member this SDK does not model drops out of the payload and the signature will not match. The built-in providers keep those bytes and expose them through `catalog.RawSource`:
+Verify signatures against the original bytes, not a re-serialized document, or unmodeled members drop out of the payload. The built-in providers keep those bytes and expose them through `catalog.RawSource`:
 
 ```go
 if rawSource, ok := src.(catalog.RawSource); ok {
@@ -157,7 +157,7 @@ if rawSource, ok := src.(catalog.RawSource); ok {
 
 ### Package as an OCI artifact
 
-Mapping a catalog onto OCI is not part of the specification, so it lives in [`examples/oci`](./examples/oci) rather than the SDK. Run it with:
+OCI packaging is not part of the specification, so it lives in [`examples/oci`](./examples/oci):
 
 ```bash
 go run ./examples/oci

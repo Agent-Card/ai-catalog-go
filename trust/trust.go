@@ -2,9 +2,8 @@
 // Copyright AGNTCY Contributors (https://github.com/agntcy)
 // SPDX-License-Identifier: Apache-2.0
 
-// Package trust provides digest parsing and verification and JCS (RFC 8785)
-// canonicalization for AI Catalog documents. Rule checking lives in package
-// validate.
+// Package trust provides digest verification and JCS (RFC 8785) canonicalization.
+// Rule checking lives in package validate.
 package trust
 
 import (
@@ -16,7 +15,7 @@ import (
 	"strings"
 )
 
-// Digest-parsing errors. Callers may test for these with errors.Is.
+// Digest errors, matchable with errors.Is.
 var (
 	// ErrInvalidDigestFormat indicates a digest that is not "algorithm:hex".
 	ErrInvalidDigestFormat = errors.New("digest must use the format 'algorithm:hex-value'")
@@ -27,8 +26,7 @@ var (
 	// ErrWeakDigestAlgorithm indicates a digest algorithm weaker than SHA-256.
 	ErrWeakDigestAlgorithm = errors.New("digest algorithm is weaker than SHA-256")
 
-	// ErrInvalidDigestHex indicates a digest whose value is not lowercase hex
-	// of the length its algorithm requires.
+	// ErrInvalidDigestHex indicates a value that is not lowercase hex of the required length.
 	ErrInvalidDigestHex = errors.New("invalid digest hex value")
 )
 
@@ -38,22 +36,21 @@ type ParsedDigest struct {
 	hexValue  string
 }
 
-// Algorithm returns the normalized (lowercased) digest algorithm.
+// Algorithm returns the lowercased algorithm.
 func (d *ParsedDigest) Algorithm() string { return d.algorithm }
 
-// HexValue returns the normalized (lowercased) hex digest value.
+// HexValue returns the lowercased hex value.
 func (d *ParsedDigest) HexValue() string { return d.hexValue }
 
-// Hex lengths of the accepted digest algorithms (two hex chars per byte).
+// Hex lengths of the accepted algorithms.
 const (
 	sha256HexLen = 64
 	sha384HexLen = 96
 	sha512HexLen = 128
 )
 
-// ParseDigest parses and validates a digest string of the form
-// "algorithm:hex-value". Only SHA-256, SHA-384, and SHA-512 are accepted;
-// weaker algorithms are rejected.
+// ParseDigest parses an "algorithm:hex" digest. Only SHA-256, SHA-384 and
+// SHA-512 are accepted.
 func ParseDigest(value string) (*ParsedDigest, error) {
 	algorithm, hexValue, found := strings.Cut(value, ":")
 	if !found || algorithm == "" || hexValue == "" || strings.Count(value, ":") != 1 {

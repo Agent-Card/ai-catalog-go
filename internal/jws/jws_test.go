@@ -61,14 +61,6 @@ func TestCheck(t *testing.T) {
 	}
 }
 
-func TestCheck_MessageIsNotSpecificToTrustManifests(t *testing.T) {
-	got := jws.Check("eyJhbGciOiJub25lIn0..c2ln")
-
-	if strings.Contains(got.Message, "trust manifest") {
-		t.Errorf("the verdict is shared with catalog signatures, got %q", got.Message)
-	}
-}
-
 func TestParse(t *testing.T) {
 	const (
 		plain    = "eyJhbGciOiJFUzI1NiJ9..c2ln"

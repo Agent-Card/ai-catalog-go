@@ -2,15 +2,11 @@
 // Copyright AGNTCY Contributors (https://github.com/agntcy)
 // SPDX-License-Identifier: Apache-2.0
 
-// Command oci-example packs an AI Catalog document into a standard OCI image
-// layout on disk.
+// Command oci-example packs an AI Catalog into an OCI image layout on disk.
 //
-// Packaging a catalog as an OCI artifact is not part of the AI Catalog
-// specification; the spec describes it only as an informative mapping. It is
-// therefore kept out of the SDK and shown here as a self-contained example
-// depending solely on the standard library and the catalog package. Production
-// use wants a real OCI client (such as oras) for distribution and cosign for
-// signing.
+// OCI packaging is only an informative mapping in the spec, so it lives here and
+// not in the SDK. Production use wants a real OCI client such as oras, and
+// cosign for signing.
 package main
 
 import (
@@ -40,8 +36,7 @@ const (
 	fileMode os.FileMode = 0o644
 )
 
-// descriptor references content by digest (a subset of the OCI content
-// descriptor schema).
+// descriptor is a subset of the OCI content descriptor.
 type descriptor struct {
 	MediaType    string            `json:"mediaType"`
 	Digest       string            `json:"digest"`
@@ -86,8 +81,7 @@ func run(dir string) error {
 		return fmt.Errorf("create blobs dir: %w", err)
 	}
 
-	// The catalog document becomes the single layer; an empty JSON object
-	// serves as the (required) config, following OCI's artifact conventions.
+	// The catalog is the single layer; an empty JSON object is the required config.
 	catalogBytes, err := json.Marshal(doc)
 	if err != nil {
 		return fmt.Errorf("marshal catalog: %w", err)
@@ -138,8 +132,7 @@ func run(dir string) error {
 		map[string]string{"imageLayoutVersion": ociLayoutVersion})
 }
 
-// writeBlob writes data into the content-addressable blobs/sha256 directory and
-// returns a descriptor pointing at it.
+// writeBlob stores data under blobs/sha256 and returns its descriptor.
 func writeBlob(blobsDir string, data []byte, mediaType string) (descriptor, error) {
 	sum := sha256.Sum256(data)
 	hexSum := hex.EncodeToString(sum[:])
@@ -169,7 +162,7 @@ func writeJSON(path string, v any) error {
 	return nil
 }
 
-// sampleCatalog builds a small, valid AI Catalog to package.
+// sampleCatalog builds a small catalog to package.
 func sampleCatalog() *catalog.AICatalog {
 	return &catalog.AICatalog{
 		SpecVersion: "1.0",

@@ -31,6 +31,7 @@
       "trustManifest": {
         "identity": "urn:example:none-md5",
         "subject": {
+          "identifier": "urn:example:none-md5",
           "type": "application/json",
           "digest": "md5:0123456789abcdef0123456789abcdef",
           "url": "https://example.com/none-md5.json"

@@ -44,8 +44,7 @@ const (
 	CodeProvenanceMember     Code = "provenance-member-missing"
 )
 
-// did:web Publisher Profile rules. They are warnings: a manifest that breaks
-// one is still a well-formed document, but the catalog cannot be Trusted.
+// did:web Publisher Profile rules. They are warnings that keep the catalog from Trusted.
 const (
 	CodeProfileIdentifier Code = "profile-identifier"
 	CodeProfileIdentity   Code = "profile-identity"
