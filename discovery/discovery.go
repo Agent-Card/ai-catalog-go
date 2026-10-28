@@ -288,9 +288,7 @@ func sameOrigin(a, b *url.URL) bool {
 }
 
 // asCatalog accepts a response that succeeded and holds a JSON document with a
-// specVersion. The media type is not checked: the specification prefers
-// application/ai-catalog+json but accepts any JSON type, and hosts that serve
-// files as text/plain are common.
+// specVersion. The media type is not checked, as the specification accepts any JSON type.
 func asCatalog(resp *Response) (*catalog.AICatalog, error) {
 	if !resp.success() {
 		return nil, errors.New(describeStatus(resp.StatusCode))

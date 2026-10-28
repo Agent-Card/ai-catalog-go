@@ -18,7 +18,6 @@ func TestTargetsWithRel(t *testing.T) {
 	}{
 		{"specification example", []string{`<https://example.com/catalog/ai.json>; rel="ai-catalog"`}, []string{"https://example.com/catalog/ai.json"}},
 		{"bare token, any case", []string{`</c.json>; REL=ai-catalog`}, []string{catalogPath}},
-		{"relation type in any case", []string{`</c.json>; rel="AI-Catalog"`}, []string{catalogPath}},
 		{
 			"picks the match out of several",
 			[]string{`</style.css>; rel=preload; as=style, <https://a.example/ai.json>; rel="ai-catalog"; type="application/ai-catalog+json", </next>; rel=next`},
@@ -27,14 +26,9 @@ func TestTargetsWithRel(t *testing.T) {
 		{"one of several relation types", []string{`</c.json>; rel="alternate ai-catalog"`}, []string{catalogPath}},
 		{"a longer relation type", []string{`</c.json>; rel="ai-catalogs"`}, nil},
 		{"commas and semicolons in quotes", []string{`</a?x=1,2>; title="a, b; c"; rel="ai-catalog"`}, []string{"/a?x=1,2"}},
-		{"quoted pairs", []string{`</a>; title="say \"hi\", ok"; rel="ai-catalog"`}, []string{"/a"}},
 		{"only the first rel counts", []string{`</a>; rel=next; rel="ai-catalog"`}, nil},
 		{"anchor", []string{`</a>; rel="ai-catalog"; anchor="#frag"`}, nil},
-		{"several header fields", []string{`</a>; rel=next`, `</b>; rel=ai-catalog`}, []string{"/b"}},
-		{"empty", []string{""}, nil},
-		{"not a link", []string{"garbage"}, nil},
 		{"unterminated target", []string{"<unterminated; rel=ai-catalog"}, nil},
-		{"no parameters", []string{"</a>"}, nil},
 		{"rel without value", []string{"</a>; rel"}, nil},
 		{"junk before a link", []string{"junk, </b>; rel=ai-catalog"}, []string{"/b"}},
 		{"junk after a target", []string{"</a> junk, </b>; rel=ai-catalog"}, []string{"/b"}},

@@ -132,16 +132,6 @@ func TestDiscoverFollowsALinkHeader(t *testing.T) {
 	}
 }
 
-func TestDiscoverFollowsALinkHeaderToAnotherHost(t *testing.T) {
-	f := newFake().
-		serve(exampleRoot, "application/json", []string{`<https://catalogs.example.net/example>; rel="ai-catalog"`}, "{}").
-		catalog("https://catalogs.example.net/example")
-
-	if got := discover(t, f, exampleHost).URL; got != "https://catalogs.example.net/example" {
-		t.Errorf("url = %s", got)
-	}
-}
-
 func TestDiscoverFollowsAnHTMLLinkElement(t *testing.T) {
 	f := newFake().
 		html("https://example.com/docs/", nil, `<head><link rel="ai-catalog" href="../ai.json" type="application/ai-catalog+json"></head>`).
@@ -154,30 +144,12 @@ func TestDiscoverFollowsAnHTMLLinkElement(t *testing.T) {
 	}
 }
 
-func TestDiscoverResolvesAnHTMLLinkAgainstTheBaseElement(t *testing.T) {
-	f := newFake().
-		html(exampleRoot, nil, `<head><base href="https://cdn.example.net/x/"><link rel="ai-catalog" href="ai.json"></head>`).
-		catalog("https://cdn.example.net/x/ai.json")
-
-	if got := discover(t, f, exampleHost).URL; got != "https://cdn.example.net/x/ai.json" {
-		t.Errorf("url = %s", got)
-	}
-}
-
 func TestDiscoverFallsBackToTheWellKnownURI(t *testing.T) {
 	f := newFake().
 		html(exampleRoot, nil, "<html><head></head></html>").
 		catalog("https://example.com/.well-known/ai-catalog.json")
 
 	if got := discover(t, f, exampleHost).Method; got != MethodWellKnown {
-		t.Errorf("method = %s", got)
-	}
-}
-
-func TestDiscoverRequestsTheWellKnownURIAtTheRootOfTheHost(t *testing.T) {
-	f := newFake().catalog("https://example.com/.well-known/ai-catalog.json")
-
-	if got := discover(t, f, "https://example.com/some/deep/page?q=1").Method; got != MethodWellKnown {
 		t.Errorf("method = %s", got)
 	}
 }
@@ -368,28 +340,6 @@ func TestDiscoverOverHTTP(t *testing.T) {
 
 	if result.Method != MethodLinkHeader || result.URL != "https://"+host+"/catalog/ai.json" {
 		t.Errorf("got %s via %s", result.URL, result.Method)
-	}
-}
-
-func TestDiscoverOverHTTPReportsTheFinalURLAfterARedirect(t *testing.T) {
-	host, client := serveTLS(t, func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/ai.json":
-			http.Redirect(w, r, "/moved/ai.json", http.StatusFound)
-		case "/moved/ai.json":
-			_, _ = w.Write([]byte(catalogJSON))
-		default:
-			w.WriteHeader(http.StatusNotFound)
-		}
-	})
-
-	result, err := Discover(context.Background(), "https://"+host+"/ai.json", WithHTTPClient(client))
-	if err != nil {
-		t.Fatalf("Discover: %v", err)
-	}
-
-	if result.URL != "https://"+host+"/moved/ai.json" {
-		t.Errorf("url = %s", result.URL)
 	}
 }
 

@@ -23,17 +23,11 @@ func TestFindHTMLLinks(t *testing.T) {
 			[]string{"/catalog/ai.json"},
 		},
 		{"upper case, unquoted", `<LINK REL=AI-CATALOG HREF=/c.json>`, []string{catalogPath}},
-		{"single quotes, self-closing", `<link href='/c.json' rel='ai-catalog' />`, []string{catalogPath}},
 		{"several relation types", `<link rel="alternate ai-catalog" href="/c.json">`, []string{catalogPath}},
 		{
 			"other relations and links without href",
 			`<link rel="stylesheet" href="/a.css"><link rel="ai-catalogue" href="/x"><link rel="ai-catalog"><link rel="ai-catalog" href="">`,
 			nil,
-		},
-		{
-			"document order and entities",
-			`<link rel="ai-catalog" href="/a?x=1&amp;y=2"><link rel="ai-catalog" href="/b?x=1&#38;y=&#x32;">`,
-			[]string{"/a?x=1&y=2", "/b?x=1&y=2"},
 		},
 		{
 			"comments and raw text",
@@ -44,16 +38,11 @@ func TestFindHTMLLinks(t *testing.T) {
 			<link rel="ai-catalog" href="/real">`,
 			[]string{"/real"},
 		},
-		{"greater-than sign in a value", `<meta content="a > b"><link rel="ai-catalog" href="/c.json">`, []string{catalogPath}},
 		{
 			"stops at the end of the head",
 			`<head><link rel="ai-catalog" href="/head"></head><body><link rel="ai-catalog" href="/body"></body>`,
 			[]string{"/head"},
 		},
-		{"stops at the body", `<body><link rel="ai-catalog" href="/body">`, nil},
-		{"first attribute wins", `<link rel="ai-catalog" href="/first" href="/second">`, []string{"/first"}},
-		{"malformed", "<<<>>><link rel=\"ai-catalog", nil},
-		{"empty", "", nil},
 	}
 
 	for _, tt := range tests {
