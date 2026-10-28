@@ -15,7 +15,7 @@ It implements the [AI Catalog specification](https://ai-catalog.io/spec/).
 
 The repository follows the spec's split between normative and non-normative content:
 
-- **Normative**: the stable, supported API. Document types, parsing and querying (`catalog`), conformance validation (`validate`), and digest verification and canonicalization (`trust`). `catalog` also has lookups the spec does not define, such as `GetByTag`, `GetByPublisher` and `SearchByRegex`.
+- **Normative**: the stable, supported API. Document types, parsing and querying (`catalog`), conformance validation (`validate`), digest verification and canonicalization (`trust`), and finding a site's catalog (`discovery`). `catalog` also has lookups the spec does not define, such as `GetByTag`, `GetByPublisher` and `SearchByRegex`.
 - **Non-normative**:
   - `provider` and the `catalog.Source` interface load a catalog from a local file or an HTTP endpoint.
   - [`examples/`](./examples) holds reference code, such as packaging a catalog as an OCI artifact. It is not part of the supported API.
@@ -57,6 +57,27 @@ src, err = provider.Web(ctx, "https://acme-corp.com"+catalog.WellKnownPath)
 `Web` fetches over HTTP. Use `provider.WithHTTPClient(myClient)` for a custom client or `provider.WithFetcher(...)` for a custom transport.
 
 A parsed `*catalog.AICatalog` needs no `Source`; call its methods directly.
+
+### Discover a catalog from a domain
+
+`discovery.Discover` takes a URL or a bare domain and follows the spec's [discovery procedure](https://ai-catalog.io/spec/#discovery): a catalog at the URL itself, then a `Link` header with `rel="ai-catalog"`, then an HTML `<link rel="ai-catalog">`, then `/.well-known/ai-catalog.json`.
+
+```go
+import "github.com/Agent-Card/ai-catalog-go/discovery"
+
+result, err := discovery.Discover(ctx, "example.com")
+if err != nil {
+	// errors.Is(err, discovery.ErrNotFound) when nothing was found; a
+	// *discovery.NotFoundError lists every URL that was tried and why it failed.
+}
+
+result.URL     // where the catalog was served from, after redirects
+result.Method  // discovery.MethodLinkHeader, MethodHTMLLink, MethodWellKnown or MethodDirect
+result.Catalog // the parsed *catalog.AICatalog
+result.Raw     // the bytes as served, for signature verification
+```
+
+Only `https` is requested, redirects to `http` are refused, and responses are capped at 10 MiB. Discovery does not guard against requests to private addresses; a service that runs it for callers it does not trust should pass `discovery.WithFetcher(...)` (or `WithHTTPClient` with a restricting dialer). Nested catalogs are not followed.
 
 ### Query entries
 
