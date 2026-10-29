@@ -1,4 +1,4 @@
-// Copyright AI-Catalog Contributors (https://github.com/Agent-Card/ai-catalog-go-sdk)
+// Copyright AI-Catalog Contributors (https://github.com/Agent-Card/ai-catalog-go)
 // SPDX-License-Identifier: Apache-2.0
 
 package validate
