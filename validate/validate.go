@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
-	"net/url"
 	"regexp"
 	"slices"
 	"strconv"
@@ -30,9 +29,10 @@ const (
 	// Discoverable is a valid document with a host.
 	Discoverable
 
-	// Trusted is a Discoverable document in which every root entry trust
-	// manifest is signed, bound to its entry, unexpired and conforms to the
-	// did:web Publisher Profile. Signatures are not verified.
+	// Trusted is a Discoverable document in which every root entry that carries
+	// trust manifests has one signed by its publisher under the did:web
+	// Publisher Profile, bound to the entry and current. Signatures are not
+	// verified.
 	Trusted
 )
 
@@ -91,7 +91,7 @@ type config struct {
 // Option customizes Validate.
 type Option func(*config)
 
-// WithClock sets the clock used to decide whether a trust manifest has expired.
+// WithClock sets the clock used to judge signature validity.
 func WithClock(now func() time.Time) Option {
 	return func(c *config) { c.now = now }
 }
@@ -110,6 +110,8 @@ func Validate(c *catalog.AICatalog, opts ...Option) Result {
 		opt(&v.cfg)
 	}
 
+	v.now = v.cfg.now()
+
 	v.validateCatalog(c, "catalog", 0)
 
 	return Result{
@@ -123,13 +125,14 @@ func Validate(c *catalog.AICatalog, opts ...Option) Result {
 // validator accumulates diagnostics while walking a catalog document.
 type validator struct {
 	cfg      config
+	now      time.Time
 	errors   []Diagnostic
 	warnings []Diagnostic
 
-	// manifests counts the root entry trust manifests; heldBack is set when one
-	// of them is not ready to be trusted.
-	manifests int
-	heldBack  bool
+	// entriesWithManifests counts the root entries carrying trust manifests;
+	// heldBack is set when one of them has no manifest ready to be trusted.
+	entriesWithManifests int
+	heldBack             bool
 }
 
 func (v *validator) addError(code Code, path, message string) {
@@ -144,7 +147,7 @@ func (v *validator) level(c *catalog.AICatalog) ConformanceLevel {
 	switch {
 	case len(v.errors) > 0 || c.Host == nil:
 		return Minimal
-	case v.manifests > 0 && !v.heldBack:
+	case v.entriesWithManifests > 0 && !v.heldBack:
 		return Trusted
 	default:
 		return Discoverable
@@ -154,7 +157,11 @@ func (v *validator) level(c *catalog.AICatalog) ConformanceLevel {
 func (v *validator) validateCatalog(c *catalog.AICatalog, path string, depth int) {
 	v.validateSpecVersion(c.SpecVersion, path+".specVersion")
 	v.validateHost(c.Host, path+".host")
-	v.validateSignature(c.Signature, path+".signature")
+
+	if c.Signature != nil {
+		v.validateSignature(c.Signature, catalogJWSType, path+".signature")
+	}
+
 	v.validateExtensionKeys(c.Extensions, path+".extensions")
 	v.validateEntryUniqueness(c.Entries, path)
 
@@ -224,6 +231,7 @@ func (v *validator) validateEntry(entry *catalog.CatalogEntry, path string, dept
 	v.validateArtifactSource(entry, path)
 	v.validateTimestamp(entry.UpdatedAt, path+".updatedAt")
 	v.validateExtensionKeys(entry.Extensions, path+".extensions")
+	v.validatePolicyURLs(entry.Extensions, path+".extensions")
 	v.validatePublisher(entry.Publisher, path+".publisher")
 	v.validateEntryTrust(entry, path, depth)
 	v.validateNestedCatalog(entry, path, depth)
@@ -313,6 +321,9 @@ func (v *validator) validateNestedCatalog(entry *catalog.CatalogEntry, path stri
 var reverseDNSKey = regexp.MustCompile(
 	`^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$`)
 
+// urlKey matches an extension key that is a URL with an authority.
+var urlKey = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9+.\-]*://[^/?#\s]+`)
+
 // validateExtensionKeys requires every key to be a URL or a reverse-DNS string.
 func (v *validator) validateExtensionKeys(extensions map[string]json.RawMessage, path string) {
 	for _, key := range slices.Sorted(maps.Keys(extensions)) {
@@ -324,11 +335,42 @@ func (v *validator) validateExtensionKeys(extensions map[string]json.RawMessage,
 }
 
 func isExtensionKey(key string) bool {
-	if parsed, err := url.Parse(key); err == nil && parsed.Scheme != "" && parsed.Host != "" {
-		return true
+	return urlKey.MatchString(key) || reverseDNSKey.MatchString(key)
+}
+
+// policyURLsKey is the extension key of the policy URLs extension.
+const policyURLsKey = "https://ai-catalog.org/extensions/policy-urls"
+
+// validatePolicyURLs requires the policy-urls extension to be an object whose
+// privacyPolicyUrl and termsOfServiceUrl, when present, are strings.
+func (v *validator) validatePolicyURLs(extensions map[string]json.RawMessage, path string) {
+	raw, ok := extensions[policyURLsKey]
+	if !ok {
+		return
 	}
 
-	return reverseDNSKey.MatchString(key)
+	var members map[string]any
+
+	valid := json.Unmarshal(raw, &members) == nil && members != nil
+
+	for _, name := range []string{"privacyPolicyUrl", "termsOfServiceUrl"} {
+		if member, ok := members[name]; ok {
+			_, isString := member.(string)
+			valid = valid && isString
+		}
+	}
+
+	if !valid {
+		v.addError(CodePolicyURLs, path, policyURLsKey+
+			" must be an object whose privacyPolicyUrl and termsOfServiceUrl, when present, are strings")
+	}
+}
+
+// absoluteURI matches a URI with a scheme and a non-empty remainder.
+var absoluteURI = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9+.\-]*:\S+$`)
+
+func isAbsoluteURI(value string) bool {
+	return absoluteURI.MatchString(value)
 }
 
 func (v *validator) validateSpecVersion(specVersion, path string) {

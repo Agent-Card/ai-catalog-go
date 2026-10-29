@@ -149,7 +149,7 @@ result = validate.Validate(doc, validate.WithClock(clock), validate.WithMaxNesti
 
 Diagnostics carry a stable `Code`; match on it rather than on the message.
 
-`Trusted` is structural. Every root entry's trust manifest must be signed, bound to its entry by `subject`, unexpired, and conform to the `did:web` Publisher Profile: a `urn:air` identifier, identity exactly `did:web:{publisher}`, an ES256 signature whose `kid` is the identity plus a fragment, and no `jku`, `jwk`, `x5u` or `x5c`. Profile violations are warnings that keep the catalog at `Discoverable`. Signatures are not verified and DID documents are not resolved.
+`Trusted` is structural. A valid catalog with a `host` is `Trusted` when every root entry that carries `trustManifests` has at least one manifest that is a current endorsement by the entry's publisher: its `signature` uses the `did-web-v1` profile, `signature.signer` equals `contributor` and `did:web:{publisher}` for the `urn:air` identifier, the protected header has `typ` `ai-catalog-trust-manifest+jws`, `alg` `ES256` and a `kid` that is the signer plus a fragment (no `jku`, `jwk`, `x5u` or `x5c`), and `subject` and the entry's `digest` bind it to the entry. Other contributors, such as assessors, never hold an entry back, but do not make it `Trusted` alone. Profile violations and expired or not-yet-valid signatures are warnings that keep the catalog at `Discoverable`. `alg` `none` is an error. Signatures are never cryptographically verified and DID documents are not resolved.
 
 ### Trust metadata
 
@@ -160,18 +160,20 @@ import "github.com/Agent-Card/ai-catalog-go/trust"
 ok, err := trust.VerifyDigest("sha256:9f86d0...", data)
 
 // Canonicalize a manifest (JCS, RFC 8785) for signing or verification:
-canonical, err := trust.CanonicalizeTrustManifest(entry.TrustManifest)
+canonical, err := trust.CanonicalizeTrustManifest(&entry.TrustManifests[0])
 ```
 
 A manifest read from a document is canonicalized from its original bytes, so members the SDK does not model are covered as published. A manifest built in code or changed after reading is canonicalized from its serialization; sign what `CanonicalizeTrustManifest` returns for it. `TrustManifest.Raw()` returns the original bytes.
 
-Verify signatures against the original bytes, not a re-serialized document, or unmodeled members drop out of the payload. The built-in providers keep those bytes and expose them through `catalog.RawSource`:
+The SDK never verifies signatures. The signing payload of a manifest or catalog is its JSON without its own `signature.jws` and `additionalSignatures`, canonicalized with JCS; nested members of those names stay in.
+
+To verify one yourself, use the original bytes, not a re-serialized document, or unmodeled members drop out of the payload. The built-in providers keep those bytes and expose them through `catalog.RawSource`:
 
 ```go
 if rawSource, ok := src.(catalog.RawSource); ok {
 	raw, err := rawSource.Raw(ctx)
 
-	// Strips the top-level "signature" and canonicalizes the rest:
+	// Strips the top-level "signature.jws" and "additionalSignatures" and canonicalizes the rest:
 	payload, err := trust.CanonicalizeForSignature(raw)
 }
 ```

@@ -35,31 +35,23 @@ type Publisher struct {
 	IdentityType string `json:"identityType,omitempty"`
 }
 
-// TrustManifest carries identity, attestation and provenance metadata for an artifact.
+// TrustManifest carries one contributor's identity, attestation and provenance
+// metadata for an artifact.
 type TrustManifest struct {
-	// Identity is the URI of the issuer. Under the did:web Publisher Profile it
-	// is "did:web:" plus the publisher of the entry's urn:air identifier.
-	Identity string `json:"identity"`
-
-	IdentityType string           `json:"identityType,omitempty"`
-	TrustSchema  *TrustSchema     `json:"trustSchema,omitempty"`
-	Attestations []Attestation    `json:"attestations,omitzero"`
-	Provenance   []ProvenanceLink `json:"provenance,omitzero"`
-
-	PrivacyPolicyURL  string `json:"privacyPolicyUrl,omitempty"`
-	TermsOfServiceURL string `json:"termsOfServiceUrl,omitempty"`
+	// Contributor is the absolute URI of the party that made the manifest.
+	Contributor string `json:"contributor"`
 
 	// Subject binds the manifest to the artifact; required with a Signature.
 	Subject *Subject `json:"subject,omitempty"`
 
-	// IssuedAt is an RFC 3339 timestamp; required with a Signature.
-	IssuedAt string `json:"issuedAt,omitempty"`
+	Signature *Signature `json:"signature,omitempty"`
 
-	// ExpiresAt is an RFC 3339 timestamp after which the manifest is stale.
-	ExpiresAt string `json:"expiresAt,omitempty"`
+	// AdditionalSignatures is reserved; consumers accept and ignore it.
+	AdditionalSignatures json.RawMessage `json:"additionalSignatures,omitempty"`
 
-	// Signature is a detached JWS over the JCS-canonicalized manifest.
-	Signature string `json:"signature,omitempty"`
+	TrustSchema  *TrustSchema     `json:"trustSchema,omitempty"`
+	Attestations []Attestation    `json:"attestations,omitzero"`
+	Provenance   []ProvenanceLink `json:"provenance,omitzero"`
 
 	// Extensions holds vendor-specific members; keys must be a URL or a
 	// reverse-DNS string.
@@ -116,11 +108,29 @@ type Subject struct {
 	// must equal the entry's Type.
 	Type string `json:"type"`
 
-	// Digest is the artifact digest as "algorithm:hex", SHA-256 or stronger.
+	// Digest is the artifact digest as "algorithm:hex"; within a CatalogEntry it
+	// must equal the entry's Digest.
 	Digest string `json:"digest"`
+}
 
-	// URL locates the artifact; within a CatalogEntry it must equal the entry's URL.
-	URL string `json:"url,omitempty"`
+// Signature is a signature object; signatures are never cryptographically
+// verified by this SDK.
+type Signature struct {
+	// Signer is the absolute URI of the signing party. For a trust manifest it
+	// must equal the manifest's Contributor.
+	Signer string `json:"signer"`
+
+	// Profile names the signer profile, such as "did-web-v1".
+	Profile string `json:"profile"`
+
+	// IssuedAt is an RFC 3339 timestamp.
+	IssuedAt string `json:"issuedAt"`
+
+	// ExpiresAt is an RFC 3339 timestamp, later than IssuedAt.
+	ExpiresAt string `json:"expiresAt,omitempty"`
+
+	// JWS is a detached compact JWS, "encodedProtectedHeader..encodedSignature".
+	JWS string `json:"jws"`
 }
 
 // TrustSchema describes the trust framework applied to an artifact.

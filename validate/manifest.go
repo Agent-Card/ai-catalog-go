@@ -6,114 +6,119 @@ package validate
 
 import (
 	"fmt"
-	"slices"
-	"strings"
-	"time"
 
 	"github.com/Agent-Card/ai-catalog-go/catalog"
 	"github.com/Agent-Card/ai-catalog-go/internal/jws"
 	"github.com/Agent-Card/ai-catalog-go/trust"
 )
 
-// allowedJWSAlgorithms is the specification's signature algorithm allowlist.
-var allowedJWSAlgorithms = []string{"ES256", "ES384", "EdDSA", "PS256", "PS384", "RS256"}
-
 func (v *validator) validateEntryTrust(entry *catalog.CatalogEntry, path string, depth int) {
-	manifest := entry.TrustManifest
-	if manifest == nil {
-		return
+	v.validateDigest(entry.Digest, path+".digest")
+
+	var hasSigned, hasPublisher bool
+
+	for i := range entry.TrustManifests {
+		manifest := &entry.TrustManifests[i]
+		manifestPath := fmt.Sprintf("%s.trustManifests[%d]", path, i)
+
+		v.validateTrustManifest(manifest, manifestPath)
+
+		hasSigned = hasSigned || manifest.Signature != nil
+
+		bound := v.validateSubjectBinding(entry, manifest, manifestPath)
+		endorsed := v.isPublisherEndorsement(entry, manifest, manifestPath)
+
+		hasPublisher = hasPublisher || (bound && endorsed)
 	}
 
-	path += ".trustManifest"
+	if hasSigned && entry.Digest == "" {
+		v.addError(CodeEntryDigest, path+".digest",
+			"an entry carrying a signed trust manifest must include digest")
 
-	v.validateTrustManifest(manifest, path)
-	v.validateSubjectBinding(entry, path)
-
-	ready := isSigned(manifest) && v.checkProfile(entry, path) && !v.expired(manifest)
-
-	if depth == 0 {
-		v.manifests++
-		v.heldBack = v.heldBack || !ready
+		hasPublisher = false
 	}
-}
 
-// isSigned reports whether the manifest carries a signature with its subject
-// and issuedAt.
-func isSigned(manifest *catalog.TrustManifest) bool {
-	return manifest.Signature != "" && manifest.Subject != nil && manifest.IssuedAt != ""
+	if depth == 0 && len(entry.TrustManifests) > 0 {
+		v.entriesWithManifests++
+		v.heldBack = v.heldBack || !hasPublisher
+	}
 }
 
 // validateTrustManifest checks the rules that hold for a trust manifest.
 func (v *validator) validateTrustManifest(manifest *catalog.TrustManifest, path string) {
 	v.validateExtensionKeys(manifest.Extensions, path+".extensions")
-	v.validateIdentity(manifest.Identity, path+".identity")
+	v.validateContributor(manifest.Contributor, path+".contributor")
 
 	// An empty manifest must be omitted.
 	if !isSubstantive(manifest) {
-		v.addError(CodeManifestEmpty, path, "trustManifest must carry at least one substantive member "+
-			"(a signature with its subject and issuedAt, a non-empty attestations or "+
-			"provenance array, or a trustSchema) and must otherwise be omitted entirely")
+		v.addError(CodeManifestEmpty, path, "trust manifest must contain at least one of a signature, "+
+			"a trustSchema, non-empty attestations or provenance, or non-empty extensions, "+
+			"and must otherwise be omitted entirely")
 	}
 
-	v.validateSignedMembers(manifest, path)
-	v.validateSignature(manifest.Signature, path+".signature")
-	v.validateTimestamp(manifest.IssuedAt, path+".issuedAt")
-	v.validateExpiry(manifest, path)
+	if signature := manifest.Signature; signature != nil {
+		signaturePath := path + ".signature"
+
+		if manifest.Subject == nil {
+			v.addError(CodeManifestSignedMember, path+".subject",
+				"a trust manifest carrying a signature must include a subject")
+		}
+
+		v.validateSignature(signature, manifestJWSType, signaturePath)
+
+		if signature.Signer != "" && signature.Signer != manifest.Contributor {
+			v.addError(CodeManifestSigner, signaturePath+".signer", fmt.Sprintf(
+				"signature.signer %q must exactly equal the contributor %q", signature.Signer, manifest.Contributor))
+		}
+	}
+
 	v.validateSubject(manifest.Subject, path+".subject")
 	v.validateTrustSchema(manifest.TrustSchema, path+".trustSchema")
 	v.validateAttestations(manifest.Attestations, path)
 	v.validateProvenance(manifest.Provenance, path)
 }
 
-func (v *validator) validateIdentity(identity, path string) {
+func (v *validator) validateContributor(contributor, path string) {
 	switch {
-	case identity == "":
-		v.addError(CodeManifestIdentity, path, "trustManifest.identity is required and must not be empty")
-	case !strings.Contains(identity, ":"):
-		v.addWarning(CodeManifestIdentityURI, path, "trustManifest.identity SHOULD be a URI")
+	case contributor == "":
+		v.addError(CodeManifestContributor, path, "trust manifest contributor is required and must not be empty")
+	case !isAbsoluteURI(contributor):
+		v.addError(CodeManifestContributorURI, path, "trust manifest contributor must be an absolute URI")
 	}
 }
 
-// isSubstantive reports whether a manifest carries verifiable trust evidence. A
-// subject and issuedAt count only alongside a signature.
+// isSubstantive reports whether a manifest carries trust evidence.
 func isSubstantive(manifest *catalog.TrustManifest) bool {
-	return isSigned(manifest) ||
+	return manifest.Signature != nil ||
+		manifest.TrustSchema != nil ||
 		len(manifest.Attestations) > 0 ||
 		len(manifest.Provenance) > 0 ||
-		manifest.TrustSchema != nil
+		len(manifest.Extensions) > 0
 }
 
-// validateSignedMembers requires the members a signature must cover, so it cannot be replayed.
-func (v *validator) validateSignedMembers(manifest *catalog.TrustManifest, path string) {
-	if manifest.Signature == "" {
-		return
+// isPublisherEndorsement reports whether the manifest is a signed, current
+// did:web endorsement of the entry by the publisher its urn:air identifier
+// names, free of profile violations.
+func (v *validator) isPublisherEndorsement(entry *catalog.CatalogEntry, manifest *catalog.TrustManifest, path string) bool {
+	signature := manifest.Signature
+	if signature == nil {
+		return false
 	}
 
-	if manifest.Subject == nil {
-		v.addError(CodeManifestSignedMember, path+".subject",
-			"a trustManifest carrying a signature must include a subject")
+	// Parse quietly: the structure was already reported while validating the manifest.
+	header, err := jws.Parse(signature.JWS)
+	if err != nil || signature.Profile != didWebProfile || !jws.Detached(signature.JWS) {
+		return false
 	}
 
-	if manifest.IssuedAt == "" {
-		v.addError(CodeManifestSignedMember, path+".issuedAt",
-			"a trustManifest carrying a signature must include issuedAt")
-	}
-}
+	signaturePath := path + ".signature"
+	profileOK := v.checkSignerProfile(signature, header, signaturePath)
+	current := v.signatureCurrent(signature, signaturePath)
 
-// expired reports whether the manifest's expiresAt is in the past.
-func (v *validator) expired(manifest *catalog.TrustManifest) bool {
-	expiresAt, err := time.Parse(time.RFC3339, manifest.ExpiresAt)
-
-	return err == nil && expiresAt.Before(v.cfg.now())
-}
-
-func (v *validator) validateExpiry(manifest *catalog.TrustManifest, path string) {
-	v.validateTimestamp(manifest.ExpiresAt, path+".expiresAt")
-
-	if v.expired(manifest) {
-		v.addWarning(CodeManifestExpired, path+".expiresAt", fmt.Sprintf(
-			"trustManifest expired at %q and SHOULD be rejected", manifest.ExpiresAt))
-	}
+	return profileOK && current &&
+		signature.Signer == manifest.Contributor &&
+		header.Type == manifestJWSType &&
+		isPublisher(entry, signature.Signer)
 }
 
 func (v *validator) validateSubject(subject *catalog.Subject, path string) {
@@ -138,22 +143,18 @@ func (v *validator) validateSubject(subject *catalog.Subject, path string) {
 }
 
 // validateSubjectBinding requires the subject to restate the entry's
-// identifier, version, type and url, which brings them into the signed payload.
-func (v *validator) validateSubjectBinding(entry *catalog.CatalogEntry, path string) {
-	subject := entry.TrustManifest.Subject
+// identifier, type, digest and version, and reports whether it does.
+func (v *validator) validateSubjectBinding(entry *catalog.CatalogEntry, manifest *catalog.TrustManifest, path string) bool {
+	subject := manifest.Subject
 	if subject == nil {
-		return
+		return false
 	}
+
+	before := len(v.errors)
 
 	if subject.Identifier != "" && subject.Identifier != entry.Identifier {
 		v.addError(CodeSubjectMismatch, path+".subject.identifier", fmt.Sprintf(
 			"subject.identifier %q must equal the entry identifier %q", subject.Identifier, entry.Identifier))
-	}
-
-	if subject.Version != entry.Version {
-		v.addError(CodeSubjectMismatch, path+".subject.version", fmt.Sprintf(
-			"subject.version %q must equal the entry version %q (both absent or both present)",
-			subject.Version, entry.Version))
 	}
 
 	if subject.Type != "" && entry.Type != "" && subject.Type != entry.Type {
@@ -161,10 +162,18 @@ func (v *validator) validateSubjectBinding(entry *catalog.CatalogEntry, path str
 			"subject.type %q must equal the entry type %q", subject.Type, entry.Type))
 	}
 
-	if subject.URL != "" && subject.URL != entry.URL {
-		v.addError(CodeSubjectMismatch, path+".subject.url", fmt.Sprintf(
-			"subject.url %q must equal the entry url %q", subject.URL, entry.URL))
+	if subject.Digest != "" && entry.Digest != "" && subject.Digest != entry.Digest {
+		v.addError(CodeSubjectMismatch, path+".subject.digest", fmt.Sprintf(
+			"subject.digest %q must equal the entry digest %q", subject.Digest, entry.Digest))
 	}
+
+	if subject.Version != entry.Version {
+		v.addError(CodeSubjectMismatch, path+".subject.version", fmt.Sprintf(
+			"subject.version %q must be present exactly when the entry version is and equal it (%q)",
+			subject.Version, entry.Version))
+	}
+
+	return len(v.errors) == before
 }
 
 func (v *validator) validateTrustSchema(schema *catalog.TrustSchema, path string) {
@@ -224,43 +233,5 @@ func (v *validator) validateDigest(value, path string) {
 
 	if _, err := trust.ParseDigest(value); err != nil {
 		v.addError(CodeDigestInvalid, path, err.Error())
-	}
-}
-
-// validateSignature applies the rules shared by catalog and trust manifest
-// signatures. "none" and the HMAC family cannot establish third-party trust.
-func (v *validator) validateSignature(signature, path string) {
-	if signature == "" {
-		return
-	}
-
-	if !jws.Detached(signature) {
-		v.addError(CodeSignatureForm, path, "signature must use detached JWS compact serialization")
-
-		return
-	}
-
-	result := jws.Check(signature)
-
-	switch result.Problem {
-	case jws.Malformed:
-		v.addError(CodeSignatureMalformed, path, result.Message)
-
-		return
-	case jws.Forbidden:
-		v.addError(CodeSignatureAlgorithm, path, result.Message)
-
-		return
-	case jws.OK:
-	}
-
-	if header, err := jws.Parse(signature); err == nil && header.Has("b64") {
-		v.addError(CodeSignatureB64, path, "signature header must not contain 'b64'")
-	}
-
-	if !slices.Contains(allowedJWSAlgorithms, result.Algorithm) {
-		v.addWarning(CodeSignatureUnlisted, path, fmt.Sprintf(
-			"signature algorithm '%s' is outside the specification allowlist (%s)",
-			result.Algorithm, strings.Join(allowedJWSAlgorithms, ", ")))
 	}
 }

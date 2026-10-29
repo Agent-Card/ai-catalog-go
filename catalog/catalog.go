@@ -30,9 +30,12 @@ type AICatalog struct {
 	// Entries may be empty.
 	Entries []CatalogEntry `json:"entries"`
 
-	// Signature is a detached JWS over the JCS-canonicalized document without
-	// this member.
-	Signature string `json:"signature,omitempty"`
+	// Signature covers the JCS-canonicalized document without its own
+	// signature.jws and additionalSignatures.
+	Signature *Signature `json:"signature,omitempty"`
+
+	// AdditionalSignatures is reserved; consumers accept and ignore it.
+	AdditionalSignatures json.RawMessage `json:"additionalSignatures,omitempty"`
 
 	// Extensions holds vendor-specific members; keys must be a URL or a
 	// reverse-DNS string.

@@ -102,27 +102,28 @@ func TestCanonicalizeTrustManifest_FollowsChangesAfterDecoding(t *testing.T) {
 		t.Fatalf("decode manifest: %v", err)
 	}
 
-	manifest.Identity = "urn:example:b"
+	manifest.Contributor = "did:web:b.example"
 
 	got, err := trust.CanonicalizeTrustManifest(&manifest)
 	if err != nil {
 		t.Fatalf("CanonicalizeTrustManifest error: %v", err)
 	}
 
-	if want := `{"identity":"urn:example:b"}`; got != want {
+	if want := `{"contributor":"did:web:b.example"}`; got != want {
 		t.Errorf("canonical form = %s, want %s", got, want)
 	}
 }
 
-// The detached signature never covers itself, and members the SDK does not
-// model stay in the payload.
+// The payload omits only the signature's jws and additionalSignatures, and
+// members the SDK does not model stay in.
 func TestCanonicalizeForSignature(t *testing.T) {
 	got, err := trust.CanonicalizeForSignature(manifestShapes(t)["signed with unmodelled member"])
 	if err != nil {
 		t.Fatalf("CanonicalizeForSignature error: %v", err)
 	}
 
-	if want := `{"futureMember":42,"identity":"urn:example"}`; string(got) != want {
+	if want := `{"contributor":"did:web:a.example","futureMember":42,` +
+		`"signature":{"futureMember":7,"issuedAt":"2026-03-15T10:00:00Z","profile":"did-web-v1","signer":"did:web:a.example"}}`; string(got) != want {
 		t.Errorf("CanonicalizeForSignature = %s, want %s", got, want)
 	}
 }

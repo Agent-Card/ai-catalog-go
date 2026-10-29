@@ -18,6 +18,8 @@ import (
 	"github.com/Agent-Card/ai-catalog-go/validate"
 )
 
+const assessorDID = "did:web:assessor.example"
+
 // diagnostic is the part of a validate.Diagnostic the tests assert on.
 type diagnostic struct {
 	Code validate.Code
@@ -68,6 +70,10 @@ func entry(i int, member string) string {
 	return fmt.Sprintf("catalog.entries[%d]%s", i, member)
 }
 
+func manifest(i int, member string) string {
+	return entry(i, ".trustManifests[0]"+member)
+}
+
 func TestValidate_Levels(t *testing.T) {
 	tests := []struct {
 		fixture string
@@ -99,108 +105,145 @@ func TestValidate_Rules(t *testing.T) {
 
 	wantErrors := []diagnostic{
 		{validate.CodeHostMember, "catalog.host.displayName"},
-		{validate.CodeSignatureForm, "catalog.signature"},
+		{validate.CodeSignatureForm, "catalog.signature.jws"},
 		{validate.CodeExtensionKey, "catalog.extensions"},
 		{validate.CodeEntryArtifact, entry(0, "")},
 		{validate.CodeEntryArtifact, entry(1, "")},
 		{validate.CodeEntryDuplicate, entry(3, "")},
 		{validate.CodeEntryDuplicate, entry(5, "")},
 		{validate.CodeEntryVersion, entry(7, ".identifier")},
-		{validate.CodeManifestEmpty, entry(8, ".trustManifest")},
+		{validate.CodeManifestEmpty, manifest(8, "")},
 		{validate.CodeEntryMember, entry(9, ".identifier")},
 		{validate.CodeEntryMember, entry(9, ".type")},
 		{validate.CodePublisherMember, entry(9, ".publisher.identifier")},
 		{validate.CodePublisherMember, entry(9, ".publisher.displayName")},
-		{validate.CodeManifestIdentity, entry(9, ".trustManifest.identity")},
-		{validate.CodeManifestEmpty, entry(9, ".trustManifest")},
+		{validate.CodeManifestContributor, manifest(9, ".contributor")},
+		{validate.CodeManifestEmpty, manifest(9, "")},
 		{validate.CodeTimestamp, entry(10, ".updatedAt")},
 		{validate.CodeExtensionKey, entry(11, ".extensions")},
-		{validate.CodeExtensionKey, entry(11, ".trustManifest.extensions")},
-		{validate.CodeManifestEmpty, entry(12, ".trustManifest")},
-		{validate.CodeManifestEmpty, entry(13, ".trustManifest")},
-		{validate.CodeManifestSignedMember, entry(13, ".trustManifest.subject")},
-		{validate.CodeManifestSignedMember, entry(13, ".trustManifest.issuedAt")},
-		{validate.CodeTimestamp, entry(14, ".trustManifest.issuedAt")},
-		{validate.CodeSubjectMismatch, entry(15, ".trustManifest.subject.identifier")},
-		{validate.CodeSubjectMismatch, entry(15, ".trustManifest.subject.version")},
-		{validate.CodeSubjectMismatch, entry(15, ".trustManifest.subject.type")},
-		{validate.CodeSubjectMismatch, entry(15, ".trustManifest.subject.url")},
+		{validate.CodeExtensionKey, manifest(11, ".extensions")},
+		{validate.CodeManifestEmpty, manifest(12, "")},
+		{validate.CodeManifestSignedMember, manifest(13, ".subject")},
+		{validate.CodeSignatureMember, manifest(13, ".signature.issuedAt")},
+		{validate.CodeEntryDigest, entry(13, ".digest")},
+		{validate.CodeTimestamp, manifest(14, ".signature.issuedAt")},
+		{validate.CodeSubjectMismatch, manifest(15, ".subject.identifier")},
+		{validate.CodeSubjectMismatch, manifest(15, ".subject.version")},
+		{validate.CodeSubjectMismatch, manifest(15, ".subject.type")},
+		{validate.CodeSubjectMismatch, manifest(15, ".subject.digest")},
 		{validate.CodeNestedInvalid, entry(16, ".data")},
+		{validate.CodeManifestSigner, manifest(17, ".signature.signer")},
+		{validate.CodeSignatureType, manifest(18, ".signature.jws")},
+		{validate.CodeSignatureType, manifest(19, ".signature.jws")},
+		{validate.CodeSignatureSigner, manifest(20, ".signature.signer")},
+		{validate.CodeManifestSigner, manifest(20, ".signature.signer")},
+		{validate.CodeManifestContributorURI, manifest(21, ".contributor")},
+		{validate.CodeSignatureMember, manifest(22, ".signature.profile")},
+		{validate.CodeSignatureMember, manifest(22, ".signature.jws")},
 	}
 
 	wantWarnings := []diagnostic{
 		{validate.CodeIdentifierNotURI, entry(10, ".identifier")},
-		{validate.CodeManifestExpired, entry(14, ".trustManifest.expiresAt")},
-		{validate.CodeProfileIdentifier, entry(15, ".trustManifest")},
-		{validate.CodeProfileKeyID, entry(15, ".trustManifest.signature")},
+		{validate.CodeProfileSigner, manifest(13, ".signature.signer")},
+		{validate.CodeProfileKeyID, manifest(13, ".signature.jws")},
+		{validate.CodeSignatureExpired, manifest(14, ".signature.expiresAt")},
+		{validate.CodeProfileSigner, manifest(15, ".signature.signer")},
+		{validate.CodeProfileKeyID, manifest(15, ".signature.jws")},
+		{validate.CodeProfileSigner, manifest(20, ".signature.signer")},
 	}
 
 	compare(t, "error", result.Errors, wantErrors)
 	compare(t, "warning", result.Warnings, wantWarnings)
 }
 
-func TestValidate_WeakSignaturesAndDigests(t *testing.T) {
+func TestValidate_NoneSignaturesAndWeakDigests(t *testing.T) {
 	result := validate.Validate(parse(t, "weak_signature.json"))
 
 	want := []diagnostic{
-		{validate.CodeSignatureAlgorithm, "catalog.signature"},
-		{validate.CodeSignatureAlgorithm, entry(0, ".trustManifest.signature")},
-		{validate.CodeSignatureAlgorithm, entry(1, ".trustManifest.signature")},
-		{validate.CodeDigestInvalid, entry(1, ".trustManifest.subject.digest")},
-		{validate.CodeSignatureAlgorithm, entry(2, ".trustManifest.signature")},
-		{validate.CodeSignatureMalformed, entry(3, ".trustManifest.signature")},
-		{validate.CodeDigestInvalid, entry(4, ".trustManifest.attestations[0].digest")},
-		{validate.CodeDigestInvalid, entry(4, ".trustManifest.provenance[0].sourceDigest")},
+		{validate.CodeDigestInvalid, entry(1, ".digest")},
+		{validate.CodeSignatureAlgorithm, manifest(1, ".signature.jws")},
+		{validate.CodeDigestInvalid, manifest(1, ".subject.digest")},
+		{validate.CodeSignatureAlgorithm, manifest(2, ".signature.jws")},
+		{validate.CodeSignatureMalformed, manifest(3, ".signature.jws")},
+		{validate.CodeDigestInvalid, manifest(4, ".attestations[0].digest")},
+		{validate.CodeDigestInvalid, manifest(4, ".provenance[0].sourceDigest")},
 	}
 
 	compare(t, "error", result.Errors, want)
 }
 
-func TestValidate_DidWebProfile(t *testing.T) {
+func TestValidate_DidWebSignerProfile(t *testing.T) {
 	result := validate.Validate(parse(t, "profile.json"))
 
-	trustManifest := func(i int, member string) string { return entry(i, ".trustManifest"+member) }
-
 	wantWarnings := []diagnostic{
-		{validate.CodeProfileIdentifier, trustManifest(1, "")},
-		{validate.CodeProfileIdentity, trustManifest(2, ".identity")},
-		{validate.CodeProfileIdentity, trustManifest(3, ".identity")},
-		{validate.CodeProfileType, trustManifest(4, ".identityType")},
-		{validate.CodeProfileAlgorithm, trustManifest(5, ".signature")},
-		{validate.CodeProfileKeyID, trustManifest(6, ".signature")},
-		{validate.CodeProfileKeyID, trustManifest(7, ".signature")},
-		{validate.CodeProfileKeyID, trustManifest(8, ".signature")},
-		{validate.CodeProfileHeader, trustManifest(9, ".signature")},
-		{validate.CodeProfileIdentifier, trustManifest(10, "")},
-		{validate.CodeProfileIdentifier, trustManifest(14, "")},
-		{validate.CodeProfileIdentifier, trustManifest(15, "")},
+		{validate.CodeProfileSigner, manifest(3, ".signature.signer")},
+		{validate.CodeProfileAlgorithm, manifest(5, ".signature.jws")},
+		{validate.CodeProfileKeyID, manifest(6, ".signature.jws")},
+		{validate.CodeProfileKeyID, manifest(7, ".signature.jws")},
+		{validate.CodeProfileKeyID, manifest(8, ".signature.jws")},
+		{validate.CodeProfileHeader, manifest(9, ".signature.jws")},
+		{validate.CodeProfileSigner, manifest(10, ".signature.signer")},
+		{validate.CodeProfileSigner, manifest(15, ".signature.signer")},
 	}
 
 	wantErrors := []diagnostic{
-		{validate.CodeSignatureB64, trustManifest(11, ".signature")},
-		{validate.CodeSignatureMalformed, trustManifest(12, ".signature")},
-		{validate.CodeSignatureForm, trustManifest(13, ".signature")},
+		{validate.CodeSignatureB64, manifest(11, ".signature.jws")},
+		{validate.CodeSignatureMalformed, manifest(12, ".signature.jws")},
+		{validate.CodeSignatureForm, manifest(13, ".signature.jws")},
 	}
 
 	compare(t, "warning", result.Warnings, wantWarnings)
 	compare(t, "error", result.Errors, wantErrors)
 }
 
-// A profile violation is a warning: the catalog stays valid but is not Trusted.
-func TestValidate_ProfileViolationHoldsBackTrusted(t *testing.T) {
-	c := parse(t, "trust_clean.json")
-	c.Entries[0].TrustManifest.Identity = "did:web:other.example"
+func TestValidate_OnlyPublisherMakesCatalogTrusted(t *testing.T) {
+	doc := parse(t, "profile.json")
 
-	result := validate.Validate(c)
+	for i := range doc.Entries {
+		alone := *doc
+		alone.Entries = []catalog.CatalogEntry{doc.Entries[i]}
+
+		trusted := validate.Validate(&alone).ConformanceLevel == validate.Trusted
+		if trusted != (i == 0) {
+			t.Errorf("entry %d: trusted = %t, want %t", i, trusted, i == 0)
+		}
+	}
+}
+
+func TestValidate_AssessorAloneIsNotTrusted(t *testing.T) {
+	doc := parse(t, "trust_clean.json")
+	trustManifest := &doc.Entries[0].TrustManifests[0]
+
+	trustManifest.Contributor = assessorDID
+	trustManifest.Signature.Signer = assessorDID
+
+	result := validate.Validate(doc)
 
 	if !result.IsValid || result.ConformanceLevel != validate.Discoverable {
-		t.Errorf("valid=%t level=%v, want a valid Discoverable catalog", result.IsValid, result.ConformanceLevel)
+		t.Errorf("valid=%t level=%v, want a valid Discoverable catalog (errors %+v)",
+			result.IsValid, result.ConformanceLevel, result.Errors)
+	}
+}
+
+func TestValidate_OtherContributorDoesNotHoldBackPublisher(t *testing.T) {
+	doc := parse(t, "trust_clean.json")
+	assessor := doc.Entries[0].TrustManifests[0]
+
+	assessor.Contributor = assessorDID
+	assessor.Signature = nil
+	doc.Entries[0].TrustManifests = append(doc.Entries[0].TrustManifests, assessor)
+
+	result := validate.Validate(doc)
+
+	if !result.IsValid || result.ConformanceLevel != validate.Trusted {
+		t.Errorf("valid=%t level=%v, want a valid Trusted catalog (errors %+v)",
+			result.IsValid, result.ConformanceLevel, result.Errors)
 	}
 }
 
 func TestValidate_ExpiryFollowsClock(t *testing.T) {
-	c := parse(t, "trust_clean.json")
-	c.Entries[0].TrustManifest.ExpiresAt = "2026-06-01T00:00:00Z"
+	doc := parse(t, "trust_clean.json")
+	doc.Entries[0].TrustManifests[0].Signature.ExpiresAt = "2026-06-01T00:00:00Z"
 
 	clock := func(value string) validate.Option {
 		now, err := time.Parse(time.RFC3339, value)
@@ -211,18 +254,18 @@ func TestValidate_ExpiryFollowsClock(t *testing.T) {
 		return validate.WithClock(func() time.Time { return now })
 	}
 
-	before := validate.Validate(c, clock("2026-05-31T00:00:00Z"))
+	before := validate.Validate(doc, clock("2026-05-31T00:00:00Z"))
 	if before.ConformanceLevel != validate.Trusted || len(before.Warnings) != 0 {
 		t.Errorf("before expiry: level=%v warnings=%+v", before.ConformanceLevel, before.Warnings)
 	}
 
-	after := validate.Validate(c, clock("2026-06-02T00:00:00Z"))
+	after := validate.Validate(doc, clock("2026-06-02T00:00:00Z"))
 	if !after.IsValid || after.ConformanceLevel != validate.Discoverable {
 		t.Errorf("after expiry: valid=%t level=%v", after.IsValid, after.ConformanceLevel)
 	}
 
 	compare(t, "warning", after.Warnings,
-		[]diagnostic{{validate.CodeManifestExpired, entry(0, ".trustManifest.expiresAt")}})
+		[]diagnostic{{validate.CodeSignatureExpired, manifest(0, ".signature.expiresAt")}})
 }
 
 func TestValidate_NestingDepth(t *testing.T) {
