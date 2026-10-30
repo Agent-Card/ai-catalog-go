@@ -7,4 +7,4 @@ require (
 	golang.org/x/mod v0.42.0
 )
 
-require golang.org/x/net v0.60.0
+require golang.org/x/net v0.62.0
