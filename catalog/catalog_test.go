@@ -243,7 +243,7 @@ func TestTrustManifest_Raw(t *testing.T) {
 
 	// Decoding into a manifest that already holds data merges members, so the
 	// bytes no longer describe a single source.
-	if err := json.Unmarshal([]byte(`{"issuedAt":"2026-01-01T00:00:00Z"}`), &manifest); err != nil {
+	if err := json.Unmarshal([]byte(`{"extensions":{"com.example.x":1}}`), &manifest); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
 
@@ -251,7 +251,7 @@ func TestTrustManifest_Raw(t *testing.T) {
 		t.Errorf("a merged manifest must not claim a single source: %s", manifest.Raw())
 	}
 
-	if (&TrustManifest{Identity: "urn:example:a"}).Raw() != nil {
+	if (&TrustManifest{Contributor: "did:web:a.example"}).Raw() != nil {
 		t.Error("a manifest built in code has no raw bytes")
 	}
 }

@@ -62,3 +62,11 @@ func ValidPublisher(publisher string) bool {
 func DID(publisher string) string {
 	return didWebPrefix + publisher
 }
+
+// RootDIDWeb reports whether value is a root did:web DID: a lowercase ASCII
+// domain with no port, path or IP address.
+func RootDIDWeb(value string) bool {
+	publisher, ok := strings.CutPrefix(value, didWebPrefix)
+
+	return ok && ValidPublisher(publisher)
+}

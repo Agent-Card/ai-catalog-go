@@ -19,8 +19,12 @@ import (
 // an out-of-range number, a duplicate member name or trailing content.
 var ErrUncanonicalizableJSON = errors.New("JSON cannot be canonicalized")
 
-// signatureMember is excluded from the signing payload; a signature cannot cover itself.
-const signatureMember = "signature"
+// Members left out of the signing payload; a signature cannot cover itself.
+const (
+	signatureMember            = "signature"
+	jwsMember                  = "jws"
+	additionalSignaturesMember = "additionalSignatures"
+)
 
 // Canonicalize returns the JCS (RFC 8785) form of a JSON object or array. Input
 // that is not I-JSON (RFC 7493) is rejected: duplicate member names, lone
@@ -43,9 +47,11 @@ func Canonicalize(data []byte) ([]byte, error) {
 	return canonical, nil
 }
 
-// CanonicalizeForSignature returns the JCS form of a JSON document without its
-// top-level "signature" member, the payload a detached JWS covers. It works on
-// the original bytes, so members the SDK does not model are included.
+// CanonicalizeForSignature returns the JCS form of a trust manifest or catalog
+// without its own "signature.jws" and "additionalSignatures", the payload a
+// detached JWS covers. The omissions are not recursive: nested members of those
+// names stay in. It works on the original bytes, so members the SDK does not
+// model are included.
 func CanonicalizeForSignature(data []byte) ([]byte, error) {
 	// Canonicalize first: it rejects duplicate members, which the round-trip below would collapse.
 	canonical, err := Canonicalize(data)
@@ -53,7 +59,7 @@ func CanonicalizeForSignature(data []byte) ([]byte, error) {
 		return nil, err
 	}
 
-	// Only an object can carry a signature member; JCS output opens one with '{'.
+	// Only an object can carry a signature; JCS output opens one with '{'.
 	if len(canonical) == 0 || canonical[0] != '{' {
 		return canonical, nil
 	}
@@ -63,22 +69,57 @@ func CanonicalizeForSignature(data []byte) ([]byte, error) {
 		return nil, fmt.Errorf("decode canonical object: %w", err)
 	}
 
-	if _, ok := object[signatureMember]; !ok {
+	_, hasAdditional := object[additionalSignaturesMember]
+	delete(object, additionalSignaturesMember)
+
+	stripped, err := stripJWS(object)
+	if err != nil {
+		return nil, err
+	}
+
+	if !hasAdditional && !stripped {
 		return canonical, nil
 	}
 
-	delete(object, signatureMember)
-
-	stripped, err := json.Marshal(object)
+	payload, err := json.Marshal(object)
 	if err != nil {
 		return nil, fmt.Errorf("marshal signing payload: %w", err)
 	}
 
-	return Canonicalize(stripped)
+	return Canonicalize(payload)
+}
+
+// stripJWS removes the "jws" member of the object's "signature" member, if it
+// is an object, and reports whether it removed one.
+func stripJWS(object map[string]json.RawMessage) (bool, error) {
+	raw, ok := object[signatureMember]
+	if !ok {
+		return false, nil
+	}
+
+	var signature map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &signature); err != nil || signature == nil {
+		return false, nil //nolint:nilerr // a signature that is not an object has no jws to omit.
+	}
+
+	if _, ok := signature[jwsMember]; !ok {
+		return false, nil
+	}
+
+	delete(signature, jwsMember)
+
+	stripped, err := json.Marshal(signature)
+	if err != nil {
+		return false, fmt.Errorf("marshal signature object: %w", err)
+	}
+
+	object[signatureMember] = stripped
+
+	return true, nil
 }
 
 // CanonicalizeTrustManifest returns the signing payload for a trust manifest,
-// without its "signature" member.
+// as CanonicalizeForSignature.
 //
 // A decoded manifest is canonicalized from its original bytes, so everything the
 // producer signed is covered. A manifest built in code or changed after decoding

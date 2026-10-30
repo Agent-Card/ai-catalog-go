@@ -31,7 +31,11 @@ type CatalogEntry struct {
 
 	Publisher *Publisher `json:"publisher,omitempty"`
 
-	TrustManifest *TrustManifest `json:"trustManifest,omitempty"`
+	// Digest is the artifact content digest as "algorithm:hex"; a signed trust
+	// manifest requires it.
+	Digest string `json:"digest,omitempty"`
+
+	TrustManifests []TrustManifest `json:"trustManifests,omitempty"`
 
 	// UpdatedAt is an RFC 3339 timestamp of the last modification.
 	UpdatedAt string `json:"updatedAt,omitempty"`

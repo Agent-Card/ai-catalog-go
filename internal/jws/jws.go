@@ -2,7 +2,7 @@
 // Copyright AGNTCY Contributors (https://github.com/agntcy)
 // SPDX-License-Identifier: Apache-2.0
 
-// Package jws holds the signature algorithm policy.
+// Package jws reads JWS protected headers.
 package jws
 
 import (
@@ -18,33 +18,6 @@ import (
 // compactParts is the number of dot-separated segments in a compact JWS.
 const compactParts = 3
 
-// Problem classifies what is wrong with a signature's declared algorithm.
-type Problem int
-
-const (
-	// OK means the signature declares an algorithm that is not forbidden.
-	OK Problem = iota
-
-	// Malformed means the protected header is unusable: not base64url JSON,
-	// repeating a member, or declaring no "alg".
-	Malformed
-
-	// Forbidden means the algorithm cannot establish third-party trust.
-	Forbidden
-)
-
-// Result is the verdict on a signature's declared algorithm.
-type Result struct {
-	// Problem is OK when the signature needs no diagnostic.
-	Problem Problem
-
-	// Algorithm is the declared "alg"; it is empty when Problem is Malformed.
-	Algorithm string
-
-	// Message describes the problem; it is empty when Problem is OK.
-	Message string
-}
-
 // Header is a decoded JWS protected header.
 type Header struct {
 	// Algorithm is the "alg" member.
@@ -52,6 +25,9 @@ type Header struct {
 
 	// KeyID is the "kid" member, empty when absent.
 	KeyID string
+
+	// Type is the "typ" member, empty when absent.
+	Type string
 
 	members map[string]struct{}
 }
@@ -65,7 +41,7 @@ func (h Header) Has(name string) bool {
 
 // Parse decodes the protected header of a JWS compact serialization. It rejects
 // a header that is not a JSON object, repeats a member name, has no "alg", or
-// carries a non-string "alg" or "kid".
+// carries a non-string "alg", "kid" or "typ".
 func Parse(signature string) (Header, error) {
 	encoded, _, _ := strings.Cut(signature, ".")
 
@@ -90,6 +66,10 @@ func Parse(signature string) (Header, error) {
 	}
 
 	if header.KeyID, err = stringMember(fields, "kid"); err != nil {
+		return Header{}, err
+	}
+
+	if header.Type, err = stringMember(fields, "typ"); err != nil {
 		return Header{}, err
 	}
 
@@ -160,35 +140,8 @@ func Detached(signature string) bool {
 	return len(parts) == compactParts && parts[0] != "" && parts[1] == "" && parts[2] != ""
 }
 
-// Check inspects the "alg" in the protected header of a compact JWS. "none"
-// proves nothing and HMAC only proves a shared secret, so neither can establish
-// third-party trust.
-func Check(signature string) Result {
-	header, err := Parse(signature)
-	if err != nil {
-		return Result{
-			Problem: Malformed,
-			Message: fmt.Sprintf("signature JWS header must be base64url-encoded JSON declaring an 'alg': %v", err),
-		}
-	}
-
-	if forbidden(header.Algorithm) {
-		return Result{
-			Problem:   Forbidden,
-			Algorithm: header.Algorithm,
-			Message: fmt.Sprintf(
-				"signature algorithm '%s' must be rejected; a signature requires an asymmetric algorithm",
-				header.Algorithm),
-		}
-	}
-
-	return Result{Problem: OK, Algorithm: header.Algorithm}
-}
-
-// forbidden reports whether algorithm is "none" or in the HMAC family. Matched
+// Forbidden reports whether algorithm is "none", which proves nothing. Matched
 // case-insensitively.
-func forbidden(algorithm string) bool {
-	normalized := strings.ToUpper(algorithm)
-
-	return normalized == "NONE" || strings.HasPrefix(normalized, "HS")
+func Forbidden(algorithm string) bool {
+	return strings.EqualFold(algorithm, "none")
 }
