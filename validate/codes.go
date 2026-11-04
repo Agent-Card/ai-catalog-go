@@ -55,7 +55,7 @@ const (
 	CodeProvenanceMember       Code = "provenance-member-missing"
 )
 
-// did:web Signer Profile rules. They are warnings that keep an entry from Trusted.
+// did:web Signer Profile rules. They are warnings; Verify does not accept such a signature.
 const (
 	CodeProfileSigner    Code = "profile-signer"
 	CodeProfileAlgorithm Code = "profile-algorithm"
