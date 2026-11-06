@@ -24,11 +24,8 @@ const profileAlgorithm = "ES256"
 var keySourceMembers = []string{"jku", "jwk", "x5u", "x5c"}
 
 // checkSignerProfile applies the did:web Signer Profile to a signature that
-// selects it, adds a warning for each violation, and reports whether there
-// were none.
-func (v *validator) checkSignerProfile(signature *catalog.Signature, header jws.Header, path string) bool {
-	before := len(v.warnings)
-
+// selects it and adds a warning for each violation.
+func (v *validator) checkSignerProfile(signature *catalog.Signature, header jws.Header, path string) {
 	if !identity.RootDIDWeb(signature.Signer) {
 		v.addWarning(CodeProfileSigner, path+".signer", fmt.Sprintf(
 			"signer %q must be a root did:web DID with a lowercase ASCII domain and no port, path or IP",
@@ -52,8 +49,6 @@ func (v *validator) checkSignerProfile(signature *catalog.Signature, header jws.
 				"jws header must not contain '%s'", member))
 		}
 	}
-
-	return len(v.warnings) == before
 }
 
 // isPublisher reports whether signer is the did:web DID of the publisher in the

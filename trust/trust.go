@@ -2,7 +2,8 @@
 // Copyright AGNTCY Contributors (https://github.com/agntcy)
 // SPDX-License-Identifier: Apache-2.0
 
-// Package trust provides digest verification and JCS (RFC 8785) canonicalization.
+// Package trust provides digest verification, JCS (RFC 8785) canonicalization
+// and ES256 signature verification.
 // Rule checking lives in package validate.
 package trust
 

@@ -101,24 +101,16 @@ func (v *validator) validateJWS(signature, typ, path string) (jws.Header, bool) 
 	return header, true
 }
 
-// signatureCurrent reports whether the signature may be accepted at the clock
-// time: issued, and not expired. A signature outside that window is warned about.
-func (v *validator) signatureCurrent(signature *catalog.Signature, path string) bool {
-	current := true
-
+// signatureCurrent warns when the signature is not yet issued or has expired at
+// the clock time.
+func (v *validator) signatureCurrent(signature *catalog.Signature, path string) {
 	if issued, ok := instant(signature.IssuedAt); ok && issued.After(v.now) {
-		current = false
-
 		v.addWarning(CodeSignatureNotYetValid, path+".issuedAt", fmt.Sprintf(
 			"signature issuedAt %q is in the future and MUST NOT be accepted yet", signature.IssuedAt))
 	}
 
 	if expires, ok := instant(signature.ExpiresAt); ok && !expires.After(v.now) {
-		current = false
-
 		v.addWarning(CodeSignatureExpired, path+".expiresAt", fmt.Sprintf(
 			"signature expired at %q and MUST NOT be accepted", signature.ExpiresAt))
 	}
-
-	return current
 }

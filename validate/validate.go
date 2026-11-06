@@ -3,7 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package validate checks AI Catalog documents against the specification and
-// detects their conformance level (Minimal, Discoverable, Trusted).
+// detects their conformance level (Minimal, Discoverable, Trusted). Validate is
+// structural; Verify also checks signatures and artifact bytes.
 package validate
 
 import (
@@ -29,10 +30,8 @@ const (
 	// Discoverable is a valid document with a host.
 	Discoverable
 
-	// Trusted is a Discoverable document in which every root entry that carries
-	// trust manifests has one signed by its publisher under the did:web
-	// Publisher Profile, bound to the entry and current. Signatures are not
-	// verified.
+	// Trusted is a Discoverable document with a verified publisher endorsement.
+	// Only Verify reports it.
 	Trusted
 )
 
@@ -84,8 +83,20 @@ const (
 )
 
 type config struct {
-	now      func() time.Time
-	maxDepth int
+	now       func() time.Time
+	maxDepth  int
+	operators []string
+	baseURL   string
+}
+
+func newConfig(opts []Option) config {
+	cfg := config{now: time.Now, maxDepth: defaultMaxNestingDepth}
+
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+
+	return cfg
 }
 
 // Option customizes Validate.
@@ -101,15 +112,23 @@ func WithMaxNestingDepth(depth int) Option {
 	return func(c *config) { c.maxDepth = depth }
 }
 
+// WithAuthorizedOperators sets the signers whose catalog signature counts as
+// authorized by the operator. Verify only.
+func WithAuthorizedOperators(operators ...string) Option {
+	return func(c *config) { c.operators = operators }
+}
+
+// WithBaseURL sets the address the catalog was served from, against which
+// relative entry URLs resolve. Verify only.
+func WithBaseURL(baseURL string) Option {
+	return func(c *config) { c.baseURL = baseURL }
+}
+
 // Validate checks the catalog against the AI Catalog specification and returns
-// the diagnostics and the detected conformance level.
+// the diagnostics and the detected conformance level. It is offline and
+// structural, so the level is at most Discoverable; Verify reports Trusted.
 func Validate(c *catalog.AICatalog, opts ...Option) Result {
-	v := &validator{cfg: config{now: time.Now, maxDepth: defaultMaxNestingDepth}}
-
-	for _, opt := range opts {
-		opt(&v.cfg)
-	}
-
+	v := &validator{cfg: newConfig(opts)}
 	v.now = v.cfg.now()
 
 	v.validateCatalog(c, "catalog", 0)
@@ -128,11 +147,6 @@ type validator struct {
 	now      time.Time
 	errors   []Diagnostic
 	warnings []Diagnostic
-
-	// entriesWithManifests counts the root entries carrying trust manifests;
-	// heldBack is set when one of them has no manifest ready to be trusted.
-	entriesWithManifests int
-	heldBack             bool
 }
 
 func (v *validator) addError(code Code, path, message string) {
@@ -147,8 +161,6 @@ func (v *validator) level(c *catalog.AICatalog) ConformanceLevel {
 	switch {
 	case len(v.errors) > 0 || c.Host == nil:
 		return Minimal
-	case v.entriesWithManifests > 0 && !v.heldBack:
-		return Trusted
 	default:
 		return Discoverable
 	}
@@ -233,7 +245,7 @@ func (v *validator) validateEntry(entry *catalog.CatalogEntry, path string, dept
 	v.validateExtensionKeys(entry.Extensions, path+".extensions")
 	v.validatePolicyURLs(entry.Extensions, path+".extensions")
 	v.validatePublisher(entry.Publisher, path+".publisher")
-	v.validateEntryTrust(entry, path, depth)
+	v.validateEntryTrust(entry, path)
 	v.validateNestedCatalog(entry, path, depth)
 
 	if entry.Identifier != "" && !strings.Contains(entry.Identifier, ":") {

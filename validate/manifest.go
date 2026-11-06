@@ -12,35 +12,25 @@ import (
 	"github.com/Agent-Card/ai-catalog-go/trust"
 )
 
-func (v *validator) validateEntryTrust(entry *catalog.CatalogEntry, path string, depth int) {
+func (v *validator) validateEntryTrust(entry *catalog.CatalogEntry, path string) {
 	v.validateDigest(entry.Digest, path+".digest")
 
-	var hasSigned, hasPublisher bool
+	var hasSigned bool
 
 	for i := range entry.TrustManifests {
 		manifest := &entry.TrustManifests[i]
 		manifestPath := fmt.Sprintf("%s.trustManifests[%d]", path, i)
 
 		v.validateTrustManifest(manifest, manifestPath)
+		v.validateSubjectBinding(entry, manifest, manifestPath)
+		v.checkManifestProfile(manifest, manifestPath)
 
 		hasSigned = hasSigned || manifest.Signature != nil
-
-		bound := v.validateSubjectBinding(entry, manifest, manifestPath)
-		endorsed := v.isPublisherEndorsement(entry, manifest, manifestPath)
-
-		hasPublisher = hasPublisher || (bound && endorsed)
 	}
 
 	if hasSigned && entry.Digest == "" {
 		v.addError(CodeEntryDigest, path+".digest",
 			"an entry carrying a signed trust manifest must include digest")
-
-		hasPublisher = false
-	}
-
-	if depth == 0 && len(entry.TrustManifests) > 0 {
-		v.entriesWithManifests++
-		v.heldBack = v.heldBack || !hasPublisher
 	}
 }
 
@@ -96,29 +86,24 @@ func isSubstantive(manifest *catalog.TrustManifest) bool {
 		len(manifest.Extensions) > 0
 }
 
-// isPublisherEndorsement reports whether the manifest is a signed, current
-// did:web endorsement of the entry by the publisher its urn:air identifier
-// names, free of profile violations.
-func (v *validator) isPublisherEndorsement(entry *catalog.CatalogEntry, manifest *catalog.TrustManifest, path string) bool {
+// checkManifestProfile warns about did:web Signer Profile violations and a
+// signature outside its validity window.
+func (v *validator) checkManifestProfile(manifest *catalog.TrustManifest, path string) {
 	signature := manifest.Signature
-	if signature == nil {
-		return false
+	if signature == nil || signature.Profile != didWebProfile || !jws.Detached(signature.JWS) {
+		return
 	}
 
 	// Parse quietly: the structure was already reported while validating the manifest.
 	header, err := jws.Parse(signature.JWS)
-	if err != nil || signature.Profile != didWebProfile || !jws.Detached(signature.JWS) {
-		return false
+	if err != nil {
+		return
 	}
 
 	signaturePath := path + ".signature"
-	profileOK := v.checkSignerProfile(signature, header, signaturePath)
-	current := v.signatureCurrent(signature, signaturePath)
 
-	return profileOK && current &&
-		signature.Signer == manifest.Contributor &&
-		header.Type == manifestJWSType &&
-		isPublisher(entry, signature.Signer)
+	v.checkSignerProfile(signature, header, signaturePath)
+	v.signatureCurrent(signature, signaturePath)
 }
 
 func (v *validator) validateSubject(subject *catalog.Subject, path string) {
@@ -142,38 +127,50 @@ func (v *validator) validateSubject(subject *catalog.Subject, path string) {
 	v.validateDigest(subject.Digest, path+".digest")
 }
 
-// validateSubjectBinding requires the subject to restate the entry's
-// identifier, type, digest and version, and reports whether it does.
-func (v *validator) validateSubjectBinding(entry *catalog.CatalogEntry, manifest *catalog.TrustManifest, path string) bool {
-	subject := manifest.Subject
-	if subject == nil {
-		return false
-	}
+// mismatch is a member of a subject that disagrees with its entry.
+type mismatch struct {
+	member  string
+	message string
+}
 
-	before := len(v.errors)
+// subjectMismatches lists where the subject differs from the entry it must
+// restate: identifier, type, digest and version.
+func subjectMismatches(entry *catalog.CatalogEntry, subject *catalog.Subject) []mismatch {
+	var found []mismatch
 
 	if subject.Identifier != "" && subject.Identifier != entry.Identifier {
-		v.addError(CodeSubjectMismatch, path+".subject.identifier", fmt.Sprintf(
-			"subject.identifier %q must equal the entry identifier %q", subject.Identifier, entry.Identifier))
+		found = append(found, mismatch{"identifier", fmt.Sprintf(
+			"subject.identifier %q must equal the entry identifier %q", subject.Identifier, entry.Identifier)})
 	}
 
 	if subject.Type != "" && entry.Type != "" && subject.Type != entry.Type {
-		v.addError(CodeSubjectMismatch, path+".subject.type", fmt.Sprintf(
-			"subject.type %q must equal the entry type %q", subject.Type, entry.Type))
+		found = append(found, mismatch{"type", fmt.Sprintf(
+			"subject.type %q must equal the entry type %q", subject.Type, entry.Type)})
 	}
 
 	if subject.Digest != "" && entry.Digest != "" && subject.Digest != entry.Digest {
-		v.addError(CodeSubjectMismatch, path+".subject.digest", fmt.Sprintf(
-			"subject.digest %q must equal the entry digest %q", subject.Digest, entry.Digest))
+		found = append(found, mismatch{"digest", fmt.Sprintf(
+			"subject.digest %q must equal the entry digest %q", subject.Digest, entry.Digest)})
 	}
 
 	if subject.Version != entry.Version {
-		v.addError(CodeSubjectMismatch, path+".subject.version", fmt.Sprintf(
+		found = append(found, mismatch{"version", fmt.Sprintf(
 			"subject.version %q must be present exactly when the entry version is and equal it (%q)",
-			subject.Version, entry.Version))
+			subject.Version, entry.Version)})
 	}
 
-	return len(v.errors) == before
+	return found
+}
+
+// validateSubjectBinding requires the subject to restate its entry.
+func (v *validator) validateSubjectBinding(entry *catalog.CatalogEntry, manifest *catalog.TrustManifest, path string) {
+	if manifest.Subject == nil {
+		return
+	}
+
+	for _, m := range subjectMismatches(entry, manifest.Subject) {
+		v.addError(CodeSubjectMismatch, path+".subject."+m.member, m.message)
+	}
 }
 
 func (v *validator) validateTrustSchema(schema *catalog.TrustSchema, path string) {

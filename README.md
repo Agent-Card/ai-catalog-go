@@ -15,7 +15,7 @@ It implements the [AI Catalog specification](https://ai-catalog.io/spec/).
 
 The repository follows the spec's split between normative and non-normative content:
 
-- **Normative**: the stable, supported API. Document types, parsing and querying (`catalog`), conformance validation (`validate`), digest verification and canonicalization (`trust`), and finding a site's catalog (`discovery`). `catalog` also has lookups the spec does not define, such as `GetByTag`, `GetByPublisher` and `SearchByRegex`.
+- **Normative**: the stable, supported API. Document types, parsing and querying (`catalog`), conformance validation and verification (`validate`), ES256 signature, digest and canonicalization primitives (`trust`), and finding a site's catalog (`discovery`). `catalog` also has lookups the spec does not define, such as `GetByTag`, `GetByPublisher` and `SearchByRegex`.
 - **Non-normative**:
   - `provider` and the `catalog.Source` interface load a catalog from a local file or an HTTP endpoint.
   - [`examples/`](./examples) holds reference code, such as packaging a catalog as an OCI artifact. It is not part of the supported API.
@@ -138,7 +138,7 @@ if !result.IsValid {
 		log.Printf("%s %s: %s", d.Code, d.Path, d.Message)
 	}
 }
-log.Printf("conformance level: %s", result.ConformanceLevel) // minimal | discoverable | trusted
+log.Printf("conformance level: %s", result.ConformanceLevel) // minimal | discoverable
 
 // Validate whatever a Source is backed by:
 result, err := validate.Source(ctx, src)
@@ -149,7 +149,30 @@ result = validate.Validate(doc, validate.WithClock(clock), validate.WithMaxNesti
 
 Diagnostics carry a stable `Code`; match on it rather than on the message.
 
-`Trusted` is structural. A valid catalog with a `host` is `Trusted` when every root entry that carries `trustManifests` has at least one manifest that is a current endorsement by the entry's publisher: its `signature` uses the `did-web-v1` profile, `signature.signer` equals `contributor` and `did:web:{publisher}` for the `urn:air` identifier, the protected header has `typ` `ai-catalog-trust-manifest+jws`, `alg` `ES256` and a `kid` that is the signer plus a fragment (no `jku`, `jwk`, `x5u` or `x5c`), and `subject` and the entry's `digest` bind it to the entry. Other contributors, such as assessors, never hold an entry back, but do not make it `Trusted` alone. Profile violations and expired or not-yet-valid signatures are warnings that keep the catalog at `Discoverable`. `alg` `none` is an error. Signatures are never cryptographically verified and DID documents are not resolved.
+`Validate` is offline and structural, so it reports at most `Discoverable`. Profile violations and expired or not-yet-valid signatures are warnings, and `alg` `none` is an error.
+
+### Verify signatures and detect `Trusted`
+
+`Trusted` is reported only by `Verify`, which checks signatures and artifact bytes. It takes the catalog as served, since signatures cover members the model does not keep, and a `Fetcher` for DID documents and artifacts. The SDK has no HTTP client for this: the `Fetcher` you pass must follow the spec's safe fetching rules (https only, no private addresses, size and time limits).
+
+```go
+fetcher := validate.FetcherFunc(func(ctx context.Context, url string) ([]byte, error) {
+	// Fetch url safely.
+})
+
+v, err := validate.Verify(ctx, raw, fetcher,
+	validate.WithBaseURL(catalogURL),                              // resolves relative entry urls
+	validate.WithAuthorizedOperators("did:web:example.com"))       // signers allowed to operate the catalog
+
+log.Printf("level: %s", v.ConformanceLevel) // minimal | discoverable | trusted
+for _, e := range v.Entries {
+	log.Printf("%s: endorsed=%t artifact=%+v", e.Identifier, e.PublisherEndorsed, e.Artifact)
+}
+```
+
+Each check is an `Outcome`: `verified`, `failed`, or `unverifiable` when it could not run (a fetch failed, or the signer profile is unsupported). For the `did-web-v1` profile `Verify` resolves the signer's DID document, selects the key named by `kid` (authorized by `assertionMethod`, controlled by the signer), verifies the ES256 signature over the JCS payload within its validity window, checks Entry Release Coverage, and compares the artifact bytes with `entry.digest`.
+
+A catalog is `Trusted` when it is at least `Discoverable`, at least one root entry has a verified endorsement by its publisher (the `did:web:{publisher}` of its `urn:air` identifier) and no publisher-signed manifest fails. Assessors never hold an entry back, but do not make it `Trusted` alone. A catalog signature is reported in `CatalogSignature`, and `CatalogAuthorized` is true only for signers passed to `WithAuthorizedOperators`.
 
 ### Trust metadata
 
@@ -165,9 +188,9 @@ canonical, err := trust.CanonicalizeTrustManifest(&entry.TrustManifests[0])
 
 A manifest read from a document is canonicalized from its original bytes, so members the SDK does not model are covered as published. A manifest built in code or changed after reading is canonicalized from its serialization; sign what `CanonicalizeTrustManifest` returns for it. `TrustManifest.Raw()` returns the original bytes.
 
-The SDK never verifies signatures. The signing payload of a manifest or catalog is its JSON without its own `signature.jws` and `additionalSignatures`, canonicalized with JCS; nested members of those names stay in.
+The signing payload of a manifest or catalog is its JSON without its own `signature.jws` and `additionalSignatures`, canonicalized with JCS; nested members of those names stay in.
 
-To verify one yourself, use the original bytes, not a re-serialized document, or unmodeled members drop out of the payload. The built-in providers keep those bytes and expose them through `catalog.RawSource`:
+`trust.ParseES256Key` and `trust.VerifyES256` verify one detached ES256 JWS against a P-256 JWK. To verify one yourself, use the original bytes, not a re-serialized document, or unmodeled members drop out of the payload. The built-in providers keep those bytes and expose them through `catalog.RawSource`:
 
 ```go
 if rawSource, ok := src.(catalog.RawSource); ok {

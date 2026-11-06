@@ -18,8 +18,6 @@ import (
 	"github.com/Agent-Card/ai-catalog-go/validate"
 )
 
-const assessorDID = "did:web:assessor.example"
-
 // diagnostic is the part of a validate.Diagnostic the tests assert on.
 type diagnostic struct {
 	Code validate.Code
@@ -83,8 +81,8 @@ func TestValidate_Levels(t *testing.T) {
 		{"minimal.json", true, validate.Minimal},
 		{"discoverable.json", true, validate.Discoverable},
 		{"unsigned_trust.json", true, validate.Discoverable},
-		{"trust_clean.json", true, validate.Trusted},
-		{"catalog.json", true, validate.Trusted},
+		{"trust_clean.json", true, validate.Discoverable},
+		{"catalog.json", true, validate.Discoverable},
 		{"weak_signature.json", false, validate.Minimal},
 	}
 
@@ -196,51 +194,6 @@ func TestValidate_DidWebSignerProfile(t *testing.T) {
 	compare(t, "error", result.Errors, wantErrors)
 }
 
-func TestValidate_OnlyPublisherMakesCatalogTrusted(t *testing.T) {
-	doc := parse(t, "profile.json")
-
-	for i := range doc.Entries {
-		alone := *doc
-		alone.Entries = []catalog.CatalogEntry{doc.Entries[i]}
-
-		trusted := validate.Validate(&alone).ConformanceLevel == validate.Trusted
-		if trusted != (i == 0) {
-			t.Errorf("entry %d: trusted = %t, want %t", i, trusted, i == 0)
-		}
-	}
-}
-
-func TestValidate_AssessorAloneIsNotTrusted(t *testing.T) {
-	doc := parse(t, "trust_clean.json")
-	trustManifest := &doc.Entries[0].TrustManifests[0]
-
-	trustManifest.Contributor = assessorDID
-	trustManifest.Signature.Signer = assessorDID
-
-	result := validate.Validate(doc)
-
-	if !result.IsValid || result.ConformanceLevel != validate.Discoverable {
-		t.Errorf("valid=%t level=%v, want a valid Discoverable catalog (errors %+v)",
-			result.IsValid, result.ConformanceLevel, result.Errors)
-	}
-}
-
-func TestValidate_OtherContributorDoesNotHoldBackPublisher(t *testing.T) {
-	doc := parse(t, "trust_clean.json")
-	assessor := doc.Entries[0].TrustManifests[0]
-
-	assessor.Contributor = assessorDID
-	assessor.Signature = nil
-	doc.Entries[0].TrustManifests = append(doc.Entries[0].TrustManifests, assessor)
-
-	result := validate.Validate(doc)
-
-	if !result.IsValid || result.ConformanceLevel != validate.Trusted {
-		t.Errorf("valid=%t level=%v, want a valid Trusted catalog (errors %+v)",
-			result.IsValid, result.ConformanceLevel, result.Errors)
-	}
-}
-
 func TestValidate_ExpiryFollowsClock(t *testing.T) {
 	doc := parse(t, "trust_clean.json")
 	doc.Entries[0].TrustManifests[0].Signature.ExpiresAt = "2026-06-01T00:00:00Z"
@@ -255,7 +208,7 @@ func TestValidate_ExpiryFollowsClock(t *testing.T) {
 	}
 
 	before := validate.Validate(doc, clock("2026-05-31T00:00:00Z"))
-	if before.ConformanceLevel != validate.Trusted || len(before.Warnings) != 0 {
+	if before.ConformanceLevel != validate.Discoverable || len(before.Warnings) != 0 {
 		t.Errorf("before expiry: level=%v warnings=%+v", before.ConformanceLevel, before.Warnings)
 	}
 
@@ -326,8 +279,8 @@ func (s stubSource) Load(context.Context) (*catalog.AICatalog, error) { return s
 
 func TestSource(t *testing.T) {
 	result, err := validate.Source(context.Background(), stubSource{doc: parse(t, "catalog.json")})
-	if err != nil || result.ConformanceLevel != validate.Trusted {
-		t.Errorf("level=%v err=%v, want Trusted", result.ConformanceLevel, err)
+	if err != nil || result.ConformanceLevel != validate.Discoverable {
+		t.Errorf("level=%v err=%v, want Discoverable", result.ConformanceLevel, err)
 	}
 
 	if _, err := validate.Source(context.Background(), stubSource{err: errors.New("unavailable")}); err == nil {
